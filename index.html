@@ -7,8 +7,8 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; }
@@ -40,10 +40,21 @@
 
         let db = null;
         try {
-            const app = firebase.initializeApp(firebaseConfig);
-            db = firebase.database(app);
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.database();
         } catch (err) {
-            console.log('Firebase ready');
+            console.error('Firebase nao inicializou, usando modo offline (localStorage):', err);
+            db = null;
+        }
+
+        // Cria a base inicial dos 42 prospects (usado no Firebase e no offline)
+        function seedProspects() {
+            const init = {};
+            PROSPECTS_DATA.forEach(p => {
+                const id = `p${String(p.rank).padStart(3, '0')}`;
+                init[id] = { ...p, id, status: "novo", history: [], updatedAt: Date.now() };
+            });
+            return init;
         }
 
         // Dados dos 42 prospects
@@ -107,6 +118,7 @@
         function App() {
             const [prospects, setProspects] = useState({});
             const [loaded, setLoaded] = useState(false);
+            const [sync, setSync] = useState(db ? 'connecting' : 'offline');
             const [user, setUser] = useState(() => localStorage.getItem("k2loc-user") || "Fernanda");
             const [search, setSearch] = useState("");
             const [statusFilter, setStatusFilter] = useState("all");
@@ -119,19 +131,11 @@
             }, [user]);
 
             useEffect(() => {
+                // Modo offline: sem Firebase, usa o localStorage do aparelho
                 if (!db) {
                     const local = JSON.parse(localStorage.getItem("k2loc-prospects") || "{}");
                     if (!Object.keys(local).length) {
-                        const init = {};
-                        PROSPECTS_DATA.forEach(p => {
-                            init[`p${String(p.rank).padStart(3, '0')}`] = {
-                                ...p,
-                                id: `p${String(p.rank).padStart(3, '0')}`,
-                                status: "novo",
-                                history: [],
-                                updatedAt: Date.now()
-                            };
-                        });
+                        const init = seedProspects();
                         localStorage.setItem("k2loc-prospects", JSON.stringify(init));
                         setProspects(init);
                     } else {
@@ -141,28 +145,39 @@
                     return;
                 }
 
-                const ref = firebase.database.ref(db, "/prospects");
-                const unsub = firebase.database.onValue(ref, (snap) => {
+                // Indicador de conexao em tempo real
+                const connRef = db.ref('.info/connected');
+                const connHandler = connRef.on('value', (snap) => {
+                    setSync(snap.val() === true ? 'online' : 'connecting');
+                });
+
+                // Sincronizacao dos prospects (tempo real entre Fernanda e Elizimario)
+                const ref = db.ref('/prospects');
+                const dataHandler = ref.on('value', (snap) => {
                     const val = snap.val();
                     if (!val) {
-                        const init = {};
-                        PROSPECTS_DATA.forEach(p => {
-                            init[`p${String(p.rank).padStart(3, '0')}`] = {
-                                ...p,
-                                id: `p${String(p.rank).padStart(3, '0')}`,
-                                status: "novo",
-                                history: [],
-                                updatedAt: Date.now()
-                            };
-                        });
-                        firebase.database.set(ref, init);
+                        const init = seedProspects();
+                        ref.set(init).catch(err => console.error('Erro ao semear prospects:', err));
                         setProspects(init);
                     } else {
                         setProspects(val);
                     }
+                    // Backup local para funcionar offline / ver os dados sem internet
+                    localStorage.setItem("k2loc-prospects", JSON.stringify(val || seedProspects()));
+                    setLoaded(true);
+                }, (err) => {
+                    // Regras do Firebase bloqueando, sem internet, etc.
+                    console.error('Erro ao ler do Firebase:', err);
+                    setSync('error');
+                    const local = JSON.parse(localStorage.getItem("k2loc-prospects") || "{}");
+                    setProspects(Object.keys(local).length ? local : seedProspects());
                     setLoaded(true);
                 });
-                return unsub;
+
+                return () => {
+                    connRef.off('value', connHandler);
+                    ref.off('value', dataHandler);
+                };
             }, []);
 
             const saveProspect = async (prospectId, newStatus) => {
@@ -180,7 +195,13 @@
                 const patch = { status: newStatus, history, updatedAt: entry.timestamp };
 
                 if (db) {
-                    await firebase.database.update(firebase.database.ref(db, `/prospects/${prospectId}`), patch);
+                    try {
+                        await db.ref(`/prospects/${prospectId}`).update(patch);
+                    } catch (err) {
+                        console.error('Erro ao salvar no Firebase:', err);
+                        alert('Nao consegui salvar online. Verifique a conexao ou as regras do Firebase e tente de novo.');
+                        return; // mantem o dialogo aberto para nova tentativa
+                    }
                 } else {
                     const updated = { ...prospects };
                     updated[prospectId] = { ...p, ...patch };
@@ -211,6 +232,14 @@
                 });
             }, [prospects, search, statusFilter]);
 
+            const SYNC_UI = {
+                online:     { dot: 'bg-green-400',                label: 'Sincronizado' },
+                connecting: { dot: 'bg-yellow-300 animate-pulse', label: 'Conectando...' },
+                offline:    { dot: 'bg-gray-300',                 label: 'Offline (local)' },
+                error:      { dot: 'bg-red-400',                  label: 'Sem acesso ao banco' }
+            };
+            const syncUi = SYNC_UI[sync] || SYNC_UI.offline;
+
             return e('div', { className: 'min-h-screen bg-gray-50' },
                 // Header
                 e('header', { className: 'header-gradient text-white shadow-lg sticky top-0 z-40' },
@@ -236,6 +265,10 @@
                                 )
                             ),
                             e('div', { className: 'flex items-center gap-3' },
+                                e('div', { className: 'flex items-center gap-1.5 text-xs', title: syncUi.label },
+                                    e('span', { className: `inline-block w-2 h-2 rounded-full ${syncUi.dot}` }),
+                                    e('span', { className: 'opacity-90 hidden sm:inline' }, syncUi.label)
+                                ),
                                 e('select', {
                                     value: user,
                                     onChange: (ev) => setUser(ev.target.value),

@@ -99,6 +99,38 @@ Todos os dados são:
 
 ---
 
+## ⚙️ Sincronização em tempo real (Firebase)
+
+O CRM usa o **Firebase Realtime Database** para a Fernanda e o Elizimário verem
+as mudanças um do outro na hora. No canto superior direito há um indicador:
+
+- 🟢 **Sincronizado** — conectado ao Firebase, tudo em tempo real.
+- 🟡 **Conectando...** — tentando conectar (aguarde alguns segundos).
+- ⚪ **Offline (local)** — sem Firebase; salva só neste aparelho.
+- 🔴 **Sem acesso ao banco** — o Firebase respondeu, mas as **regras** estão bloqueando.
+
+### Se aparecer 🔴 "Sem acesso ao banco"
+
+As regras do Realtime Database precisam permitir leitura e escrita. No
+[Console do Firebase](https://console.firebase.google.com) → projeto **k2loc-crm**
+→ **Realtime Database** → aba **Regras**, use:
+
+```json
+{
+  "rules": {
+    ".read": true,
+    ".write": true
+  }
+}
+```
+
+> Isso deixa a base aberta para qualquer um com o link. Para uma equipe pequena e
+> uma lista de prospects, costuma ser suficiente — mas **não guarde dados sensíveis**
+> e mantenha o link privado. Se quiser restringir depois, dá para colocar
+> autenticação (Firebase Auth) por cima.
+
+---
+
 ## ❓ Dúvidas
 
 **P: Preciso pagar algo?**  
