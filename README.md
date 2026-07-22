@@ -1,119 +1,52 @@
-# K2LOC CRM - Prospects & Locação
+# K2LOC CRM — Funil de Vendas
 
-Sistema de CRM online para K2LOC com Firebase Realtime Database. Totalmente gratuito e sem necessidade de instalação.
+CRM profissional (estilo Pipedrive) para a **K2 LOC** gerenciar prospects e locações.
+Página única, sem instalação, **grátis**, com sincronização em tempo real via Firebase.
 
-## 🚀 Deploy Online (Grátis)
+![K2LOC](logo-k2loc.png)
 
-### **Opção 1: Netlify (MAIS FÁCIL - 2 minutos)**
+## ✨ O que tem
 
-1. Acesse: https://app.netlify.com
-2. Clique em **"Add new site"** → **"Deploy manually"**
-3. Arraste o arquivo `index.html` para a área
-4. **Pronto!** Você recebe um link público
+- **Funil de vendas visual (Kanban)** — arraste o lead entre as etapas
+  (Novo → Contato Feito → Qualificado → Proposta → Negociação → Ganho).
+- **Ficha completa do lead** — dados, **anotações**, **tarefas com data**, e uma
+  **timeline** com tudo que aconteceu (mudanças de etapa, notas, tarefas).
+- **Ações rápidas** — WhatsApp, ligar e e-mail direto do card.
+- **Dashboard** — leads por etapa, por origem, desempenho por vendedor,
+  valor no funil, ganhos no mês e taxa de conversão.
+- **Contatos** — lista/tabela com busca e filtros (dono, origem).
+- **Atividades** — todas as tarefas pendentes num lugar só, com atrasadas em destaque.
+- **Entrada de leads** — cadastro rápido, import de planilha e **integração** com
+  WhatsApp / Instagram / Facebook / site.
+- **Tempo real** — Fernanda e Elizimário veem as mudanças um do outro na hora.
+- **Backup offline** — funciona no localStorage quando cai a internet.
 
-Netlify vai dar um link tipo: `https://seu-site-random.netlify.app`
+## 🚀 Como abrir / hospedar
 
----
+É um único `index.html`. Basta hospedar em qualquer lugar estático:
 
-### **Opção 2: GitHub Pages (Grátis)**
+- **Vercel / Netlify / GitHub Pages** — arraste o arquivo ou conecte o repositório.
+- **Local:** `python -m http.server 8000` e acesse `http://localhost:8000`.
 
-1. Crie uma conta no GitHub (se não tiver): https://github.com
-2. Crie um novo repositório público chamado `k2loc-crm`
-3. Faça upload do arquivo `index.html` para a raiz
-4. Vá em **Settings** → **Pages** → selecione **main branch**
-5. GitHub vai gerar um link tipo: `https://seu-usuario.github.io/k2loc-crm`
+## 👥 Como usar
 
----
-
-### **Opção 3: Vercel (Grátis)**
-
-1. Acesse: https://vercel.com/new
-2. Importe o repositório GitHub (criado na Opção 2)
-3. Deploy automático
-4. Recebe um link tipo: `https://k2loc-crm.vercel.app`
-
----
-
-## 📋 Como Usar
-
-### **Fernanda:**
-1. Abre o link no navegador
-2. Seleciona seu nome ("Fernanda") no topo direito
-3. Clica em um prospect
-4. Muda o status (dropdown)
-5. Adiciona notas (opcional)
-6. Clica **Salvar**
-
-### **Elizimario:**
-1. Abre o MESMO link
-2. Seleciona seu nome ("Elizimario")
-3. VÊ INSTANTANEAMENTE as mudanças de Fernanda ⚡
-
----
-
-## 🔧 Tecnologia
-
-- **React 18** - Interface dinâmica
-- **Firebase Realtime Database** - Sincronização em tempo real
-- **Tailwind CSS** - Design responsivo
-- **localStorage** - Backup offline
-
----
-
-## 📊 Funcionalidades
-
-✅ 42 prospects pré-carregados  
-✅ 2 usuários (Fernanda + Elizimario)  
-✅ 6 Status (Novo → Contatado → Interessado → Agendado → Cliente → Descartado)  
-✅ Histórico completo de ações  
-✅ Telefone clicável (liga direto)  
-✅ Busca e filtros  
-✅ Exportar dados em JSON  
-✅ Sincronização em tempo real via Firebase  
-✅ Funciona offline com localStorage  
-
----
-
-## 🎨 Cores Oficiais K2LOC
-
-- Navy: `#0A1F4B`
-- Orange: `#E85D1A`
-
----
-
-## 📱 Compatibilidade
-
-- ✅ Desktop (Chrome, Firefox, Safari, Edge)
-- ✅ Tablet (iPad, Android tablets)
-- ✅ Mobile (iPhone, Android)
-
----
-
-## 🔒 Dados
-
-Todos os dados são:
-- ✅ Salvos no Firebase (nuvem)
-- ✅ Compartilhados entre Fernanda e Elizimario
-- ✅ Com backup local (localStorage)
-- ✅ Sem intermediários
-
----
+1. Selecione seu nome (Fernanda / Elizimário) no canto superior direito.
+2. **Novo Lead** (botão laranja) para cadastrar, ou arraste os cards no funil.
+3. Clique em qualquer lead para abrir a **ficha**: mude a etapa, escreva
+   **anotações**, crie **tarefas** ("ligar quinta") e veja a **timeline**.
+4. Marque **Ganhou** / **Perdeu** quando fechar (ou não) o negócio.
 
 ## ⚙️ Sincronização em tempo real (Firebase)
 
-O CRM usa o **Firebase Realtime Database** para a Fernanda e o Elizimário verem
-as mudanças um do outro na hora. No canto superior direito há um indicador:
+O indicador no topo mostra o estado da conexão:
 
-- 🟢 **Sincronizado** — conectado ao Firebase, tudo em tempo real.
-- 🟡 **Conectando...** — tentando conectar (aguarde alguns segundos).
-- ⚪ **Offline (local)** — sem Firebase; salva só neste aparelho.
-- 🔴 **Sem acesso ao banco** — o Firebase respondeu, mas as **regras** estão bloqueando.
+- 🟢 **Sincronizado** · 🟡 **Conectando…** · ⚪ **Offline (local)** · 🔴 **Sem acesso ao banco**
 
 ### Se aparecer 🔴 "Sem acesso ao banco"
 
 As regras do Realtime Database precisam permitir leitura e escrita. No
 [Console do Firebase](https://console.firebase.google.com) → projeto **k2loc-crm**
-→ **Realtime Database** → aba **Regras**, use:
+→ **Realtime Database** → aba **Regras**:
 
 ```json
 {
@@ -124,32 +57,45 @@ As regras do Realtime Database precisam permitir leitura e escrita. No
 }
 ```
 
-> Isso deixa a base aberta para qualquer um com o link. Para uma equipe pequena e
-> uma lista de prospects, costuma ser suficiente — mas **não guarde dados sensíveis**
-> e mantenha o link privado. Se quiser restringir depois, dá para colocar
-> autenticação (Firebase Auth) por cima.
+> Deixa a base aberta para quem tiver o link. Para uma equipe pequena costuma bastar —
+> mantenha o link privado e não guarde dados sensíveis. Dá para colocar login
+> (Firebase Auth) por cima depois, se quiser restringir.
+
+## 🔌 Integração — receber leads automaticamente
+
+Para os contatos de **WhatsApp**, **Instagram/Facebook (Meta)** ou do **site**
+caírem sozinhos no funil, conecte a origem ao endpoint do Firebase usando uma
+automação (Make, Zapier ou n8n). Tudo isso está explicado na aba **Entrada de Leads**.
+
+**Endpoint (POST):**
+
+```
+https://k2loc-crm-default-rtdb.firebaseio.com/leads.json
+```
+
+**Corpo (JSON):**
+
+```json
+{
+  "name": "Nome da empresa/cliente",
+  "phone": "(85) 99999-9999",
+  "source": "whatsapp",
+  "stage": "novo"
+}
+```
+
+- 💬 **WhatsApp** — API oficial da Meta ou um bot (Z-API, Twilio) → POST a cada nova conversa.
+- 📸 **Instagram / Facebook Lead Ads** — no Make/Zapier: gatilho "Novo Lead" → ação "HTTP POST".
+- 🌐 **Site / Landing** — o formulário "Peça um orçamento" envia o POST direto.
+
+> Origens aceitas no campo `source`: `whatsapp`, `instagram`, `facebook`, `site`,
+> `indicacao`, `manual`, `planilha`. Campos que faltarem recebem um padrão automático.
+
+## 🎨 Marca
+
+- Navy: `#0A1F4B` · Laranja: `#E85D1A`
+- Logo oficial: `logo-k2loc.png`
 
 ---
 
-## ❓ Dúvidas
-
-**P: Preciso pagar algo?**  
-R: Não! Tudo é grátis (Firebase, Netlify, GitHub).
-
-**P: Funciona offline?**  
-R: Sim! Salvava locally e sincroniza quando volta online.
-
-**P: Outros podem usar?**  
-R: Qualquer um com o link pode acessar. Para restringir, guarde o link em segurança.
-
-**P: Como adicionar mais prospects?**  
-R: Entre em contato para editar o código (não é complexo).
-
----
-
-## 👤 Criado por
-
-Claude (Assistente AI)  
-Data: Julho 2026  
-Para: K2LOC Containers & Equipamentos  
-Localização: Fortaleza, CE
+K2 LOC · Locação de Containers e Equipamentos · Fortaleza/CE

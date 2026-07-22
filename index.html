@@ -3,430 +3,1015 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>K2LOC CRM - Prospects & Locação</title>
+    <title>K2LOC CRM — Funil de Vendas</title>
+    <link rel="icon" href="logo-k2loc.png">
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; }
-        :root {
-            --primary: #0A1F4B;
-            --accent: #E85D1A;
-        }
-        .header-gradient { background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%); }
-        .logo-container { height: 50px; display: flex; align-items: center; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        :root { --navy:#0A1F4B; --orange:#E85D1A; }
+        * { -webkit-tap-highlight-color: transparent; }
+        body { font-family: 'Inter', sans-serif; background:#eef1f6; color:#0f172a; }
+        .no-scrollbar::-webkit-scrollbar { height:8px; width:8px; }
+        .no-scrollbar::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:8px; }
+        .no-scrollbar::-webkit-scrollbar-track { background:transparent; }
+        .drawer-in { animation: drawerIn .22s cubic-bezier(.4,0,.2,1); }
+        @keyframes drawerIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+        .fade-in { animation: fadeIn .18s ease; }
+        @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+        .toast-in { animation: toastIn .25s cubic-bezier(.4,0,.2,1); }
+        @keyframes toastIn { from { opacity:0; transform: translateY(12px); } to { opacity:1; transform: translateY(0); } }
+        .drag-over { background:#e0e7ff !important; outline:2px dashed #6366f1; outline-offset:-4px; }
+        .card-dragging { opacity:.4; }
+        .kanban-scroll { scroll-snap-type: x proximity; }
     </style>
 </head>
-<body class="bg-gray-50">
-    <div id="root"></div>
-    
-    <script>
-        const { useState, useEffect, useMemo } = React;
-        const e = React.createElement;
+<body>
+    <div id="root" style="padding:2rem;text-align:center;color:#64748b">Carregando o CRM…</div>
 
-        // Firebase Config
-        const firebaseConfig = {
-            apiKey: "AIzaSyCWQvY5m06cJaa6Mve-VM61LQAoXLRqVOM",
-            authDomain: "k2loc-crm.firebaseapp.com",
-            databaseURL: "https://k2loc-crm-default-rtdb.firebaseio.com",
-            projectId: "k2loc-crm",
-            storageBucket: "k2loc-crm.firebasestorage.app",
-            messagingSenderId: "707918624174",
-            appId: "1:707918624174:web:dddec6ca937fcf01ddc43f"
+    <script type="text/babel" data-presets="react">
+    const { useState, useEffect, useMemo, useRef } = React;
+
+    /* ============================= Firebase ============================= */
+    const firebaseConfig = {
+        apiKey: "AIzaSyCWQvY5m06cJaa6Mve-VM61LQAoXLRqVOM",
+        authDomain: "k2loc-crm.firebaseapp.com",
+        databaseURL: "https://k2loc-crm-default-rtdb.firebaseio.com",
+        projectId: "k2loc-crm",
+        storageBucket: "k2loc-crm.firebasestorage.app",
+        messagingSenderId: "707918624174",
+        appId: "1:707918624174:web:dddec6ca937fcf01ddc43f"
+    };
+    let db = null;
+    try { firebase.initializeApp(firebaseConfig); db = firebase.database(); }
+    catch (err) { console.error('Firebase offline, usando localStorage:', err); db = null; }
+    const REST_ENDPOINT = firebaseConfig.databaseURL + "/leads.json";
+
+    /* ============================= Config ============================= */
+    const STAGES = [
+        { key:'novo',        label:'Novo Lead',     color:'#3B82F6' },
+        { key:'contatado',   label:'Contato Feito', color:'#8B5CF6' },
+        { key:'qualificado', label:'Qualificado',   color:'#EAB308' },
+        { key:'proposta',    label:'Proposta',      color:'#F97316' },
+        { key:'negociacao',  label:'Negociação',    color:'#E85D1A' },
+        { key:'ganho',       label:'Ganho',         color:'#22C55E' },
+    ];
+    const LOST = { key:'perdido', label:'Perdido', color:'#EF4444' };
+    const ALL_STAGES = [...STAGES, LOST];
+    const stageOf = k => ALL_STAGES.find(s => s.key === k) || STAGES[0];
+
+    const SOURCES = {
+        whatsapp:  { label:'WhatsApp',  icon:'💬', color:'#25D366' },
+        instagram: { label:'Instagram', icon:'📸', color:'#E1306C' },
+        facebook:  { label:'Facebook',  icon:'📘', color:'#1877F2' },
+        site:      { label:'Site',      icon:'🌐', color:'#0EA5E9' },
+        indicacao: { label:'Indicação', icon:'🤝', color:'#8B5CF6' },
+        manual:    { label:'Manual',    icon:'✍️', color:'#64748B' },
+        planilha:  { label:'Planilha',  icon:'📊', color:'#16A34A' },
+    };
+    const srcOf = s => SOURCES[s] || SOURCES.manual;
+
+    const USERS = ["Fernanda", "Elizimario"];
+    const PRIORITIES = { alta:{label:'Alta', color:'#EF4444'}, media:{label:'Média', color:'#EAB308'}, baixa:{label:'Baixa', color:'#94A3B8'} };
+
+    /* ============================= Helpers ============================= */
+    const genId = () => 'x' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+    const now = () => Date.now();
+    const arr = v => Array.isArray(v) ? v : (v && typeof v === 'object' ? Object.values(v) : []);
+    const fmtBRL = n => (Number(n)||0).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
+    const digits = s => (s||'').replace(/\D/g,'');
+    const waLink = phone => 'https://wa.me/55' + digits(phone);
+    const fmtDate = ts => ts ? new Date(ts).toLocaleDateString('pt-BR') : '';
+    const fmtDateTime = ts => ts ? new Date(ts).toLocaleDateString('pt-BR') + ' ' + new Date(ts).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '';
+    const dayKey = ts => new Date(ts).toISOString().slice(0,10);
+    const startOfMonth = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).getTime(); };
+    const timeAgo = ts => {
+        const s = Math.floor((now()-ts)/1000);
+        if (s < 60) return 'agora';
+        if (s < 3600) return Math.floor(s/60)+' min';
+        if (s < 86400) return Math.floor(s/3600)+' h';
+        if (s < 604800) return Math.floor(s/86400)+' d';
+        return fmtDate(ts);
+    };
+
+    /* ================ Dados iniciais (42 prospects K2LOC) ================ */
+    const PROSPECTS_DATA = [
+        { rank:1, name:"ATHOS CONSTRUCOES", phone:"(85) 3289-3612", priority:"alta" },
+        { rank:2, name:"DIRECIONAL ENGENHARIA", phone:"(31) 3431-5686", priority:"alta" },
+        { rank:3, name:"CMM INCORPORACOES", phone:"(85) 3266-1100", priority:"alta" },
+        { rank:4, name:"CONSORCIO ACOSTA EDRO", phone:"(85) 3289-3612", priority:"alta" },
+        { rank:5, name:"CONSTRUTORA MARQUISE", phone:"(85) 4008-3322", priority:"alta" },
+        { rank:6, name:"CONSTRUTORA RENATA", phone:"(86) 3221-1465", priority:"alta" },
+        { rank:7, name:"CONSTRUTORA PLATO", phone:"(85) 3078-5505", priority:"alta" },
+        { rank:8, name:"CONSTRUTORA SAMARIA", phone:"(85) 3474-1788", priority:"alta" },
+        { rank:9, name:"CORDEIRO ENGENHARIA", phone:"(85) 4006-2424", priority:"alta" },
+        { rank:10, name:"EDRO ENGENHARIA", phone:"(85) 3257-3333", priority:"alta" },
+        { rank:11, name:"EXECUTE CONSTRUCOES", phone:"(85) 8789-8596", priority:"alta" },
+        { rank:12, name:"IRION ENGENHARIA", phone:"(85) 9636-1258", priority:"alta" },
+        { rank:13, name:"KLC CONSTRUCOES", phone:"(88) 3409-0117", priority:"alta" },
+        { rank:14, name:"CARRILHO DESENVOLVIMENTO", phone:"(85) 8939-0678", priority:"alta" },
+        { rank:15, name:"MAGALHAES DEMOLICAO", phone:"(85) 8902-3318", priority:"alta" },
+        { rank:16, name:"NOVUM GRUPO", phone:"(85) 3266-1100", priority:"alta" },
+        { rank:17, name:"SHEKINAH CONSTRUCOES", phone:"(85) 9997-0599", priority:"alta" },
+        { rank:18, name:"TERPLAN LOCACAO", phone:"(85) 9985-7797", priority:"alta" },
+        { rank:19, name:"TUMI CONSTRUCOES", phone:"(11) 3815-1760", priority:"alta" },
+        { rank:20, name:"BRIMAX ENGENHARIA", phone:"(84) 3062-4922", priority:"alta" },
+        { rank:21, name:"CONSORCIO GTM-BRIMAX", phone:"(85) 9163-5260", priority:"alta" },
+        { rank:22, name:"GTM ENGENHARIA", phone:"(88) 9437-2810", priority:"alta" },
+        { rank:23, name:"COSAMPA", phone:"(85) 3289-2363", priority:"media" },
+        { rank:24, name:"COSTA & NOBREGA", phone:"(85) 9910-2626", priority:"media" },
+        { rank:25, name:"BRASTERRA", phone:"(85) 3055-9708", priority:"media" },
+        { rank:26, name:"BRISAS DO NASCENTE", phone:"(85) 8736-3625", priority:"media" },
+        { rank:27, name:"CDG ENGENHARIA", phone:"(85) 3239-1253", priority:"media" },
+        { rank:28, name:"CGL CONSTRUTORA", phone:"(85) 3013-8666", priority:"media" },
+        { rank:29, name:"CONSDUCTO ENGENHARIA", phone:"(85) 3067-1240", priority:"media" },
+        { rank:30, name:"CR DUARTE ENGENHARIA", phone:"(85) 3038-2024", priority:"media" },
+        { rank:31, name:"CRA ENGENHARIA", phone:"(85) 8846-1125", priority:"media" },
+        { rank:32, name:"EDMIL CONSTRUCOES", phone:"(88) 3441-1297", priority:"media" },
+        { rank:33, name:"FIP ENGENHARIA", phone:"(85) 8141-0503", priority:"media" },
+        { rank:34, name:"GENUS ENGENHARIA", phone:"(81) 3080-1344", priority:"media" },
+        { rank:35, name:"GESIN", phone:"(85) 3244-3641", priority:"media" },
+        { rank:36, name:"HERA CONSTRUCOES", phone:"(85) 8829-9001", priority:"media" },
+        { rank:37, name:"CONSTRUTORA HIDROS", phone:"(86) 2239-4480", priority:"media" },
+        { rank:38, name:"HUMANY ENGENHARIA", phone:"(85) 99179-1500", priority:"media" },
+        { rank:39, name:"JVA PROJETOS", phone:"(85) 3249-2023", priority:"media" },
+        { rank:40, name:"LCM CONSTRUCAO", phone:"(31) 3298-7050", priority:"media" },
+        { rank:41, name:"LYRA MOREIRA", phone:"(85) 3229-2222", priority:"media" },
+        { rank:42, name:"M ENGENHARIA", phone:"(85) 9723-4352", priority:"media" },
+    ];
+    function seedLeads() {
+        const init = {};
+        PROSPECTS_DATA.forEach(p => {
+            const id = 'l' + String(p.rank).padStart(3,'0');
+            init[id] = {
+                id, name:p.name, contact:'', phone:p.phone, email:'',
+                source:'manual', stage:'novo', value:0, owner:'', priority:p.priority,
+                notes:[], tasks:[], history:[{ ts:now(), user:'Sistema', type:'created' }],
+                createdAt:now(), updatedAt:now()
+            };
+        });
+        return init;
+    }
+    function normalize(raw) {
+        const out = {};
+        Object.entries(raw || {}).forEach(([k, v]) => {
+            v = v || {};
+            out[k] = {
+                id: k,
+                name: v.name || v.contact || 'Sem nome',
+                contact: v.contact || '',
+                phone: v.phone || '',
+                email: v.email || '',
+                source: SOURCES[v.source] ? v.source : 'site',
+                stage: ALL_STAGES.some(s=>s.key===v.stage) ? v.stage : 'novo',
+                value: Number(v.value) || 0,
+                owner: USERS.includes(v.owner) ? v.owner : '',
+                priority: PRIORITIES[v.priority] ? v.priority : 'media',
+                notes: arr(v.notes),
+                tasks: arr(v.tasks),
+                history: arr(v.history),
+                lostReason: v.lostReason || '',
+                wonAt: v.wonAt || null,
+                createdAt: v.createdAt || now(),
+                updatedAt: v.updatedAt || now(),
+            };
+        });
+        return out;
+    }
+
+    /* ============================= UI átomos ============================= */
+    function Badge({ children, color, subtle }) {
+        return (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold"
+                  style={ subtle
+                      ? { background: color+'1a', color }
+                      : { background: color, color:'#fff' } }>
+                {children}
+            </span>
+        );
+    }
+    function SourceBadge({ source }) {
+        const s = srcOf(source);
+        return <Badge color={s.color} subtle>{s.icon} {s.label}</Badge>;
+    }
+    function Avatar({ name, size=28 }) {
+        const initials = name ? name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase() : '—';
+        const bg = name === 'Fernanda' ? '#E85D1A' : name === 'Elizimario' ? '#0A1F4B' : '#94A3B8';
+        return (
+            <span className="inline-flex items-center justify-center rounded-full text-white font-bold shrink-0"
+                  style={{ width:size, height:size, background:bg, fontSize:size*0.4 }} title={name||'Sem dono'}>
+                {initials}
+            </span>
+        );
+    }
+
+    /* ============================= App ============================= */
+    function App() {
+        const [leads, setLeads]   = useState({});
+        const [loaded, setLoaded] = useState(false);
+        const [sync, setSync]     = useState(db ? 'connecting' : 'offline');
+        const [user, setUser]     = useState(() => localStorage.getItem('k2loc-user') || 'Fernanda');
+        const [view, setView]     = useState('funil');
+        const [selId, setSelId]   = useState(null);
+        const [showAdd, setShowAdd] = useState(false);
+        const [toast, setToast]   = useState(null);
+        const [search, setSearch] = useState('');
+        const [fOwner, setFOwner] = useState('all');
+        const [fSource, setFSource] = useState('all');
+
+        const notify = (msg) => { setToast(msg); setTimeout(()=>setToast(null), 2600); };
+
+        useEffect(() => { localStorage.setItem('k2loc-user', user); }, [user]);
+
+        /* ---- carga / sync ---- */
+        useEffect(() => {
+            if (!db) {
+                const local = JSON.parse(localStorage.getItem('k2loc-leads') || '{}');
+                const data = Object.keys(local).length ? normalize(local) : seedLeads();
+                localStorage.setItem('k2loc-leads', JSON.stringify(data));
+                setLeads(data); setLoaded(true);
+                return;
+            }
+            const connRef = db.ref('.info/connected');
+            const connH = connRef.on('value', s => setSync(s.val() === true ? 'online' : 'connecting'));
+            const ref = db.ref('/leads');
+            const dataH = ref.on('value', snap => {
+                const val = snap.val();
+                if (!val) { const init = seedLeads(); ref.set(init).catch(e=>console.error(e)); setLeads(init); }
+                else { setLeads(normalize(val)); }
+                localStorage.setItem('k2loc-leads', JSON.stringify(val || seedLeads()));
+                setLoaded(true);
+            }, err => {
+                console.error('Erro Firebase:', err); setSync('error');
+                const local = JSON.parse(localStorage.getItem('k2loc-leads') || '{}');
+                setLeads(Object.keys(local).length ? normalize(local) : seedLeads()); setLoaded(true);
+            });
+            return () => { connRef.off('value', connH); ref.off('value', dataH); };
+        }, []);
+
+        /* ---- escrita ---- */
+        const writeLead = async (id, patch) => {
+            const next = { ...patch, updatedAt: now() };
+            if (db) {
+                try { await db.ref('/leads/'+id).update(next); }
+                catch (e) { console.error(e); notify('⚠️ Falha ao salvar — verifique a conexão'); }
+            } else {
+                setLeads(prev => {
+                    const u = { ...prev, [id]: { ...prev[id], ...next } };
+                    localStorage.setItem('k2loc-leads', JSON.stringify(u)); return u;
+                });
+            }
+        };
+        const createLead = async (data) => {
+            const base = {
+                name: data.name?.trim() || 'Sem nome', contact: data.contact?.trim() || '',
+                phone: data.phone?.trim() || '', email: data.email?.trim() || '',
+                source: data.source || 'manual', stage: 'novo', value: Number(data.value) || 0,
+                owner: data.owner || '', priority: data.priority || 'media',
+                notes: [], tasks: [], history: [{ ts:now(), user, type:'created' }],
+                createdAt: now(), updatedAt: now()
+            };
+            if (db) { const r = db.ref('/leads').push(); await r.update({ ...base, id:r.key }); }
+            else {
+                const id = genId();
+                setLeads(prev => { const u = { ...prev, [id]: { ...base, id } }; localStorage.setItem('k2loc-leads', JSON.stringify(u)); return u; });
+            }
+            notify('✅ Lead adicionado ao funil');
+        };
+        const importLeads = async (list) => {
+            for (const d of list) { await createLead(d); }
+            notify('✅ ' + list.length + ' lead(s) importados');
+        };
+        const moveStage = (id, stage) => {
+            const l = leads[id]; if (!l || l.stage === stage) return;
+            const history = [...arr(l.history), { ts:now(), user, type:'stage', from:l.stage, to:stage }];
+            const patch = { stage, history };
+            if (stage === 'ganho') patch.wonAt = now();
+            writeLead(id, patch);
+            notify('→ ' + l.name + ': ' + stageOf(stage).label);
+        };
+        const addNote = (id, text) => {
+            const l = leads[id]; if (!l || !text.trim()) return;
+            writeLead(id, { notes: [...arr(l.notes), { id:genId(), ts:now(), user, text:text.trim() }] });
+        };
+        const addTask = (id, title, due) => {
+            const l = leads[id]; if (!l || !title.trim()) return;
+            writeLead(id, { tasks: [...arr(l.tasks), { id:genId(), ts:now(), user, title:title.trim(), due:due||null, done:false }] });
+        };
+        const toggleTask = (id, taskId) => {
+            const l = leads[id]; if (!l) return;
+            writeLead(id, { tasks: arr(l.tasks).map(t => t.id===taskId ? { ...t, done:!t.done, doneAt: !t.done?now():null } : t) });
+        };
+        const markLost = (id, reason) => {
+            const l = leads[id]; if (!l) return;
+            writeLead(id, { stage:'perdido', lostReason:reason||'', history:[...arr(l.history), { ts:now(), user, type:'stage', from:l.stage, to:'perdido' }] });
+            notify('Lead marcado como Perdido');
+        };
+        const deleteLead = async (id) => {
+            if (db) await db.ref('/leads/'+id).remove();
+            else setLeads(prev => { const u={...prev}; delete u[id]; localStorage.setItem('k2loc-leads', JSON.stringify(u)); return u; });
+            setSelId(null); notify('Lead excluído');
         };
 
-        let db = null;
-        try {
-            firebase.initializeApp(firebaseConfig);
-            db = firebase.database();
-        } catch (err) {
-            console.error('Firebase nao inicializou, usando modo offline (localStorage):', err);
-            db = null;
-        }
-
-        // Cria a base inicial dos 42 prospects (usado no Firebase e no offline)
-        function seedProspects() {
-            const init = {};
-            PROSPECTS_DATA.forEach(p => {
-                const id = `p${String(p.rank).padStart(3, '0')}`;
-                init[id] = { ...p, id, status: "novo", history: [], updatedAt: Date.now() };
+        /* ---- derivados ---- */
+        const leadsArr = useMemo(() => Object.values(leads), [leads]);
+        const filtered = useMemo(() => {
+            const q = search.toLowerCase();
+            return leadsArr.filter(l => {
+                if (fOwner !== 'all' && (l.owner||'') !== (fOwner==='none'?'':fOwner)) return false;
+                if (fSource !== 'all' && l.source !== fSource) return false;
+                if (q && !(l.name.toLowerCase().includes(q) || (l.contact||'').toLowerCase().includes(q) || digits(l.phone).includes(digits(q)))) return false;
+                return true;
             });
-            return init;
-        }
+        }, [leadsArr, search, fOwner, fSource]);
 
-        // Dados dos 42 prospects
-        const PROSPECTS_DATA = [
-            { rank: 1, name: "ATHOS CONSTRUCOES", phone: "(85) 3289-3612", email: "contato@athosconstrucoes.com.br", priority: "alta" },
-            { rank: 2, name: "DIRECIONAL ENGENHARIA", phone: "(31) 3431-5686", email: "contato@direcional.com.br", priority: "alta" },
-            { rank: 3, name: "CMM INCORPORACOES", phone: "(85) 3266-1100", email: "contato@cmmincorporacoes.com.br", priority: "alta" },
-            { rank: 4, name: "CONSORCIO ACOSTA EDRO", phone: "(85) 3289-3612", email: "contato@acosta.com.br", priority: "alta" },
-            { rank: 5, name: "CONSTRUTORA MARQUISE", phone: "(85) 4008-3322", email: "contato@marquise.com.br", priority: "alta" },
-            { rank: 6, name: "CONSTRUTORA RENATA", phone: "(86) 3221-1465", email: "contato@renata.com.br", priority: "alta" },
-            { rank: 7, name: "CONSTRUTORA PLATO", phone: "(85) 3078-5505", email: "contato@plato.com.br", priority: "alta" },
-            { rank: 8, name: "CONSTRUTORA SAMARIA", phone: "(85) 3474-1788", email: "contato@samaria.com.br", priority: "alta" },
-            { rank: 9, name: "CORDEIRO ENGENHARIA", phone: "(85) 4006-2424", email: "contato@cordeiro.com.br", priority: "alta" },
-            { rank: 10, name: "EDRO ENGENHARIA", phone: "(85) 3257-3333", email: "contato@edro.com.br", priority: "alta" },
-            { rank: 11, name: "EXECUTE CONSTRUCOES", phone: "(85) 8789-8596", email: "contato@execute.com.br", priority: "alta" },
-            { rank: 12, name: "IRION ENGENHARIA", phone: "(85) 9636-1258", email: "contato@irion.com.br", priority: "alta" },
-            { rank: 13, name: "KLC CONSTRUCOES", phone: "(88) 3409-0117", email: "contato@klc.com.br", priority: "alta" },
-            { rank: 14, name: "CARRILHO DESENVOLVIMENTO", phone: "(85) 8939-0678", email: "contato@carrilho.com.br", priority: "alta" },
-            { rank: 15, name: "MAGALHAES DEMOLICAO", phone: "(85) 8902-3318", email: "contato@magalhaes.com.br", priority: "alta" },
-            { rank: 16, name: "NOVUM GRUPO", phone: "(85) 3266-1100", email: "contato@novum.com.br", priority: "alta" },
-            { rank: 17, name: "SHEKINAH CONSTRUCOES", phone: "(85) 9997-0599", email: "contato@shekinah.com.br", priority: "alta" },
-            { rank: 18, name: "TERPLAN LOCACAO", phone: "(85) 9985-7797", email: "contato@terplan.com.br", priority: "alta" },
-            { rank: 19, name: "TUMI CONSTRUCOES", phone: "(11) 3815-1760", email: "contato@tumi.com.br", priority: "alta" },
-            { rank: 20, name: "BRIMAX ENGENHARIA", phone: "(84) 3062-4922", email: "contato@brimax.com.br", priority: "alta" },
-            { rank: 21, name: "CONSORCIO GTM-BRIMAX", phone: "(85) 9163-5260", email: "contato@gtm.com.br", priority: "alta" },
-            { rank: 22, name: "GTM ENGENHARIA", phone: "(88) 9437-2810", email: "contato@gtmeng.com.br", priority: "alta" },
-            { rank: 23, name: "COSAMPA", phone: "(85) 3289-2363", email: "contato@cosampa.com.br", priority: "media" },
-            { rank: 24, name: "COSTA & NOBREGA", phone: "(85) 9910-2626", email: "contato@costa.com.br", priority: "media" },
-            { rank: 25, name: "BRASTERRA", phone: "(85) 3055-9708", email: "contato@brasterra.com.br", priority: "media" },
-            { rank: 26, name: "BRISAS DO NASCENTE", phone: "(85) 8736-3625", email: "contato@brisas.com.br", priority: "media" },
-            { rank: 27, name: "CDG ENGENHARIA", phone: "(85) 3239-1253", email: "contato@cdg.com.br", priority: "media" },
-            { rank: 28, name: "CGL CONSTRUTORA", phone: "(85) 3013-8666", email: "contato@cgl.com.br", priority: "media" },
-            { rank: 29, name: "CONSDUCTO ENGENHARIA", phone: "(85) 3067-1240", email: "contato@consducto.com.br", priority: "media" },
-            { rank: 30, name: "CR DUARTE ENGENHARIA", phone: "(85) 3038-2024", email: "contato@crduarte.com.br", priority: "media" },
-            { rank: 31, name: "CRA ENGENHARIA", phone: "(85) 8846-1125", email: "contato@cra.com.br", priority: "media" },
-            { rank: 32, name: "EDMIL CONSTRUCOES", phone: "(88) 3441-1297", email: "contato@edmil.com.br", priority: "media" },
-            { rank: 33, name: "FIP ENGENHARIA", phone: "(85) 8141-0503", email: "contato@fip.com.br", priority: "media" },
-            { rank: 34, name: "GENUS ENGENHARIA", phone: "(81) 3080-1344", email: "contato@genus.com.br", priority: "media" },
-            { rank: 35, name: "GESIN", phone: "(85) 3244-3641", email: "contato@gesin.com.br", priority: "media" },
-            { rank: 36, name: "HERA CONSTRUCOES", phone: "(85) 8829-9001", email: "contato@hera.com.br", priority: "media" },
-            { rank: 37, name: "CONSTRUTORA HIDROS", phone: "(86) 2239-4480", email: "contato@hidros.com.br", priority: "media" },
-            { rank: 38, name: "HUMANY ENGENHARIA", phone: "(85) 99179-1500", email: "contato@humany.com.br", priority: "media" },
-            { rank: 39, name: "JVA PROJETOS", phone: "(85) 3249-2023", email: "contato@jva.com.br", priority: "media" },
-            { rank: 40, name: "LCM CONSTRUCAO", phone: "(31) 3298-7050", email: "contato@lcm.com.br", priority: "media" },
-            { rank: 41, name: "LYRA MOREIRA", phone: "(85) 3229-2222", email: "contato@lyra.com.br", priority: "media" },
-            { rank: 42, name: "M ENGENHARIA", phone: "(85) 9723-4352", email: "contato@mengenharia.com.br", priority: "media" }
-        ];
-
-        const STATUS_OPTIONS = [
-            { key: "novo", label: "Novo", icon: "🔵" },
-            { key: "contatado", label: "Contatado", icon: "🟡" },
-            { key: "interessado", label: "Interessado", icon: "🟢" },
-            { key: "agendado", label: "Agendado", icon: "📅" },
-            { key: "cliente", label: "Cliente", icon: "⭐" },
-            { key: "descartado", label: "Descartado", icon: "⛔" }
-        ];
-
-        const USERS = ["Fernanda", "Elizimario"];
-
-        // Main App
-        function App() {
-            const [prospects, setProspects] = useState({});
-            const [loaded, setLoaded] = useState(false);
-            const [sync, setSync] = useState(db ? 'connecting' : 'offline');
-            const [user, setUser] = useState(() => localStorage.getItem("k2loc-user") || "Fernanda");
-            const [search, setSearch] = useState("");
-            const [statusFilter, setStatusFilter] = useState("all");
-            const [tab, setTab] = useState("crm");
-            const [dialog, setDialog] = useState(null);
-            const [notes, setNotes] = useState("");
-
-            useEffect(() => {
-                localStorage.setItem("k2loc-user", user);
-            }, [user]);
-
-            useEffect(() => {
-                // Modo offline: sem Firebase, usa o localStorage do aparelho
-                if (!db) {
-                    const local = JSON.parse(localStorage.getItem("k2loc-prospects") || "{}");
-                    if (!Object.keys(local).length) {
-                        const init = seedProspects();
-                        localStorage.setItem("k2loc-prospects", JSON.stringify(init));
-                        setProspects(init);
-                    } else {
-                        setProspects(local);
-                    }
-                    setLoaded(true);
-                    return;
-                }
-
-                // Indicador de conexao em tempo real
-                const connRef = db.ref('.info/connected');
-                const connHandler = connRef.on('value', (snap) => {
-                    setSync(snap.val() === true ? 'online' : 'connecting');
-                });
-
-                // Sincronizacao dos prospects (tempo real entre Fernanda e Elizimario)
-                const ref = db.ref('/prospects');
-                const dataHandler = ref.on('value', (snap) => {
-                    const val = snap.val();
-                    if (!val) {
-                        const init = seedProspects();
-                        ref.set(init).catch(err => console.error('Erro ao semear prospects:', err));
-                        setProspects(init);
-                    } else {
-                        setProspects(val);
-                    }
-                    // Backup local para funcionar offline / ver os dados sem internet
-                    localStorage.setItem("k2loc-prospects", JSON.stringify(val || seedProspects()));
-                    setLoaded(true);
-                }, (err) => {
-                    // Regras do Firebase bloqueando, sem internet, etc.
-                    console.error('Erro ao ler do Firebase:', err);
-                    setSync('error');
-                    const local = JSON.parse(localStorage.getItem("k2loc-prospects") || "{}");
-                    setProspects(Object.keys(local).length ? local : seedProspects());
-                    setLoaded(true);
-                });
-
-                return () => {
-                    connRef.off('value', connHandler);
-                    ref.off('value', dataHandler);
-                };
-            }, []);
-
-            const saveProspect = async (prospectId, newStatus) => {
-                const p = prospects[prospectId];
-                if (!p) return;
-
-                const entry = {
-                    timestamp: Date.now(),
-                    user,
-                    status: newStatus,
-                    notes: notes.trim()
-                };
-
-                const history = [...(p.history || []), entry];
-                const patch = { status: newStatus, history, updatedAt: entry.timestamp };
-
-                if (db) {
-                    try {
-                        await db.ref(`/prospects/${prospectId}`).update(patch);
-                    } catch (err) {
-                        console.error('Erro ao salvar no Firebase:', err);
-                        alert('Nao consegui salvar online. Verifique a conexao ou as regras do Firebase e tente de novo.');
-                        return; // mantem o dialogo aberto para nova tentativa
-                    }
-                } else {
-                    const updated = { ...prospects };
-                    updated[prospectId] = { ...p, ...patch };
-                    setProspects(updated);
-                    localStorage.setItem("k2loc-prospects", JSON.stringify(updated));
-                }
-
-                setDialog(null);
-                setNotes("");
+        const stats = useMemo(() => {
+            const open = leadsArr.filter(l => l.stage!=='ganho' && l.stage!=='perdido');
+            const won = leadsArr.filter(l => l.stage==='ganho');
+            const wonMonth = won.filter(l => (l.wonAt||l.updatedAt) >= startOfMonth());
+            const lost = leadsArr.filter(l => l.stage==='perdido');
+            const decided = won.length + lost.length;
+            const pendingTasks = leadsArr.flatMap(l => arr(l.tasks).filter(t=>!t.done).map(t=>({...t, lead:l})));
+            return {
+                total: leadsArr.length,
+                openValue: open.reduce((s,l)=>s+(l.value||0),0),
+                openCount: open.length,
+                wonCount: won.length,
+                wonValue: won.reduce((s,l)=>s+(l.value||0),0),
+                wonMonthValue: wonMonth.reduce((s,l)=>s+(l.value||0),0),
+                wonMonthCount: wonMonth.length,
+                conv: decided ? Math.round(won.length/decided*100) : 0,
+                pendingTasks
             };
+        }, [leadsArr]);
 
-            const stats = useMemo(() => {
-                const all = Object.values(prospects);
-                return {
-                    total: all.length,
-                    contatados: all.filter(p => p.status !== "novo").length,
-                    clientes: all.filter(p => p.status === "cliente").length,
-                    taxa: all.length ? Math.round((all.filter(p => p.status === "cliente").length / all.length) * 100) : 0
-                };
-            }, [prospects]);
+        const selected = selId ? leads[selId] : null;
 
-            const list = useMemo(() => {
-                const arr = Object.values(prospects).sort((a, b) => a.rank - b.rank);
-                const q = search.toLowerCase();
-                return arr.filter(p => {
-                    if (statusFilter !== "all" && p.status !== statusFilter) return false;
-                    return !q || p.name.toLowerCase().includes(q) || p.phone.includes(q);
-                });
-            }, [prospects, search, statusFilter]);
+        if (!loaded) return <div className="p-10 text-center text-slate-500">Carregando o CRM…</div>;
 
-            const SYNC_UI = {
-                online:     { dot: 'bg-green-400',                label: 'Sincronizado' },
-                connecting: { dot: 'bg-yellow-300 animate-pulse', label: 'Conectando...' },
-                offline:    { dot: 'bg-gray-300',                 label: 'Offline (local)' },
-                error:      { dot: 'bg-red-400',                  label: 'Sem acesso ao banco' }
-            };
-            const syncUi = SYNC_UI[sync] || SYNC_UI.offline;
+        return (
+            <div className="min-h-screen">
+                <TopBar user={user} setUser={setUser} sync={sync} onAdd={()=>setShowAdd(true)} pending={stats.pendingTasks.length} />
+                <NavTabs view={view} setView={setView} />
 
-            return e('div', { className: 'min-h-screen bg-gray-50' },
-                // Header
-                e('header', { className: 'header-gradient text-white shadow-lg sticky top-0 z-40' },
-                    e('div', { className: 'max-w-7xl mx-auto px-4 py-3' },
-                        e('div', { className: 'flex items-center justify-between gap-4' },
-                            e('div', { className: 'flex items-center gap-3 flex-1' },
-                                e('div', { className: 'logo-container' },
-                                    e('svg', { 
-                                        width: '45', 
-                                        height: '45', 
-                                        viewBox: '0 0 640 640',
-                                        xmlns: 'http://www.w3.org/2000/svg'
-                                    },
-                                        e('g', null,
-                                            e('path', { d: 'M258.4,384h-86c0,6.7,0,13.4,0,20,29,0,58,0,87,0v12h-100c0-15,0-30,0-44.9,28.8,0,57.6,0,86.5,0,.2-13.7.4-27.4.6-41.1-29,0-58.1,0-87.1,0v-13.9h100.2v4.4s-1.1,63.5-1.1,63.5Z', fill: '#E85D1A' }),
-                                            e('path', { d: 'M346.1,95l-180.1,49.4v84.6l180.1,76.1,34.2-10.7,93.6-33V127.8l-127.8-32.9ZM467.8,256.7l-119.4,42c-1.7-.3-3.4-.7-5.1-1l-12.1-6,1.5-178.9-18.6,3.7-1.1,136.1-11.6-3.3V120c-.1,0-14.9,3.4-14.9,3.4l-1.4,122.4-8.8-3.2.5-116.9-12,3.2-1.4,110.7-7-2v-106.2l-10.5,2.2-1.1,101-5.5-1.5v-97.9l-8.8,1.8-.4,94.2-4.7-1.1-.3-91.7-7.8,2.3-.5,87.7-3.3-1.1-.4-85.9-6.4,1.8-.3,82-3.7-1v-80l-5.6,1.5-1.4,76.7-1.9-.4v-75.6l-5.6,1.4-.3,72.6-2.2-.8v-71.7l-5.1.9-.8,68.9-1.8-.3v-68.2l-4.1,1.1-.6,66.1-3.4-.4.6-67.8,175.3-47.4,122.1,31.9v124Z', fill: '#0A1F4B' })
-                                        )
-                                    )
-                                ),
-                                e('div', null,
-                                    e('h1', { className: 'text-xl font-bold' }, 'K2LOC CRM'),
-                                    e('p', { className: 'text-xs opacity-90' }, 'Fortaleza, CE')
-                                )
-                            ),
-                            e('div', { className: 'flex items-center gap-3' },
-                                e('div', { className: 'flex items-center gap-1.5 text-xs', title: syncUi.label },
-                                    e('span', { className: `inline-block w-2 h-2 rounded-full ${syncUi.dot}` }),
-                                    e('span', { className: 'opacity-90 hidden sm:inline' }, syncUi.label)
-                                ),
-                                e('select', {
-                                    value: user,
-                                    onChange: (ev) => setUser(ev.target.value),
-                                    className: 'bg-white/20 text-white border border-white/30 rounded px-3 py-2 text-sm font-medium'
-                                },
-                                    USERS.map(u => e('option', { key: u, value: u }, u))
-                                )
-                            )
-                        )
-                    )
-                ),
+                <main className="max-w-[1400px] mx-auto px-3 sm:px-5 py-5">
+                    {view==='funil'    && <Funil leads={filtered} onMove={moveStage} onOpen={setSelId}
+                                                 search={search} setSearch={setSearch}
+                                                 fOwner={fOwner} setFOwner={setFOwner} fSource={fSource} setFSource={setFSource} />}
+                    {view==='contatos' && <Contatos leads={filtered} onOpen={setSelId}
+                                                 search={search} setSearch={setSearch}
+                                                 fOwner={fOwner} setFOwner={setFOwner} fSource={fSource} setFSource={setFSource} />}
+                    {view==='atividades' && <Atividades tasks={stats.pendingTasks} allLeads={leadsArr} onOpen={setSelId} onToggle={toggleTask} />}
+                    {view==='dashboard' && <Dashboard leads={leadsArr} stats={stats} />}
+                    {view==='entrada'  && <Entrada onCreate={createLead} onImport={importLeads} endpoint={REST_ENDPOINT} />}
+                </main>
 
-                // Main
-                e('main', { className: 'max-w-7xl mx-auto px-4 py-6' },
-                    // Stats
-                    e('div', { className: 'grid grid-cols-2 md:grid-cols-4 gap-3 mb-6' },
-                        [
-                            { label: 'Total', value: stats.total, color: '#0A1F4B' },
-                            { label: 'Contatados', value: stats.contatados, color: '#0A1F4B' },
-                            { label: 'Clientes', value: stats.clientes, color: '#E85D1A' },
-                            { label: 'Taxa', value: `${stats.taxa}%`, color: '#E85D1A' }
-                        ].map(s => e('div', { key: s.label, className: 'bg-white rounded-lg p-4 shadow' },
-                            e('p', { className: 'text-xs text-gray-500 uppercase tracking-wide' }, s.label),
-                            e('p', { className: 'text-2xl font-bold mt-1', style: { color: s.color } }, s.value)
-                        ))
-                    ),
+                {selected && <LeadDrawer lead={selected} user={user} onClose={()=>setSelId(null)}
+                    onWrite={writeLead} onMove={moveStage} onAddNote={addNote} onAddTask={addTask}
+                    onToggleTask={toggleTask} onMarkLost={markLost} onDelete={deleteLead} />}
+                {showAdd && <AddLeadModal onClose={()=>setShowAdd(false)} onCreate={createLead} />}
+                {toast && <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] toast-in">
+                    <div className="bg-slate-900 text-white text-sm font-medium px-4 py-2.5 rounded-lg shadow-xl">{toast}</div>
+                </div>}
+            </div>
+        );
+    }
 
-                    // Tabs
-                    e('div', { className: 'bg-white rounded-lg shadow' },
-                        e('div', { className: 'flex gap-2 border-b p-4 flex-wrap' },
-                            ['crm', 'historico', 'analytics', 'exportar'].map(t =>
-                                e('button', {
-                                    key: t,
-                                    onClick: () => setTab(t),
-                                    className: `px-4 py-2 text-sm font-medium rounded transition ${ tab === t ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
-                                }, {
-                                    crm: '📋 CRM',
-                                    historico: '📜 Histórico',
-                                    analytics: '📊 Analytics',
-                                    exportar: '⬇️ Exportar'
-                                }[t])
-                            )
-                        ),
+    /* ============================= Top bar ============================= */
+    function TopBar({ user, setUser, sync, onAdd, pending }) {
+        const SY = {
+            online:     { dot:'#22c55e', label:'Sincronizado' },
+            connecting: { dot:'#eab308', label:'Conectando…' },
+            offline:    { dot:'#94a3b8', label:'Offline (local)' },
+            error:      { dot:'#ef4444', label:'Sem acesso ao banco' },
+        }[sync] || { dot:'#94a3b8', label:'—' };
+        return (
+            <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
+                <div className="max-w-[1400px] mx-auto px-3 sm:px-5 h-16 flex items-center gap-4">
+                    <img src="logo-k2loc.png" alt="K2LOC" className="h-9 sm:h-10 w-auto object-contain" />
+                    <div className="hidden md:block h-8 w-px bg-slate-200"></div>
+                    <div className="hidden md:block">
+                        <p className="text-sm font-bold text-[#0A1F4B] leading-none">CRM · Funil de Vendas</p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">Locação de Containers · Fortaleza/CE</p>
+                    </div>
+                    <div className="flex-1"></div>
+                    <div className="flex items-center gap-1.5 text-xs text-slate-500" title={SY.label}>
+                        <span className="inline-block w-2 h-2 rounded-full" style={{ background:SY.dot, animation: sync==='connecting'?'pulse 1.2s infinite':'none' }}></span>
+                        <span className="hidden sm:inline">{SY.label}</span>
+                    </div>
+                    <button onClick={onAdd}
+                        className="flex items-center gap-1.5 bg-[#E85D1A] hover:bg-[#d24e10] text-white text-sm font-semibold px-3 sm:px-4 py-2 rounded-lg shadow-sm transition">
+                        <span className="text-lg leading-none">+</span><span className="hidden sm:inline">Novo Lead</span>
+                    </button>
+                    <div className="flex items-center gap-2 pl-1">
+                        <Avatar name={user} size={32} />
+                        <select value={user} onChange={e=>setUser(e.target.value)}
+                            className="text-sm font-medium border border-slate-200 rounded-lg px-2 py-1.5 bg-white hover:border-slate-300 cursor-pointer">
+                            {USERS.map(u => <option key={u} value={u}>{u}</option>)}
+                        </select>
+                    </div>
+                </div>
+            </header>
+        );
+    }
+    function NavTabs({ view, setView }) {
+        const tabs = [
+            { k:'funil', label:'Funil', icon:'🎯' },
+            { k:'contatos', label:'Contatos', icon:'👥' },
+            { k:'atividades', label:'Atividades', icon:'✅' },
+            { k:'dashboard', label:'Dashboard', icon:'📊' },
+            { k:'entrada', label:'Entrada de Leads', icon:'📥' },
+        ];
+        return (
+            <nav className="bg-white border-b border-slate-200 sticky top-16 z-30">
+                <div className="max-w-[1400px] mx-auto px-2 sm:px-5 flex gap-1 overflow-x-auto no-scrollbar">
+                    {tabs.map(t => (
+                        <button key={t.k} onClick={()=>setView(t.k)}
+                            className={"whitespace-nowrap px-3 sm:px-4 py-3 text-sm font-semibold border-b-2 transition " +
+                                (view===t.k ? "border-[#E85D1A] text-[#E85D1A]" : "border-transparent text-slate-500 hover:text-slate-800")}>
+                            <span className="mr-1.5">{t.icon}</span>{t.label}
+                        </button>
+                    ))}
+                </div>
+            </nav>
+        );
+    }
 
-                        e('div', { className: 'p-6' },
-                            // CRM Tab
-                            tab === 'crm' && e('div', null,
-                                e('div', { className: 'mb-4 flex flex-col sm:flex-row gap-2' },
-                                    e('input', {
-                                        type: 'text',
-                                        placeholder: 'Buscar...',
-                                        value: search,
-                                        onChange: (ev) => setSearch(ev.target.value),
-                                        className: 'flex-1 border rounded px-3 py-2 text-sm'
-                                    }),
-                                    e('select', {
-                                        value: statusFilter,
-                                        onChange: (ev) => setStatusFilter(ev.target.value),
-                                        className: 'border rounded px-3 py-2 text-sm'
-                                    },
-                                        e('option', { value: 'all' }, 'Todos'),
-                                        STATUS_OPTIONS.map(s => e('option', { key: s.key, value: s.key }, `${s.icon} ${s.label}`))
-                                    )
-                                ),
-                                !loaded ? e('p', { className: 'text-center py-8 text-gray-500' }, 'Carregando...') :
-                                    e('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' },
-                                        list.map(p => {
-                                            const status = STATUS_OPTIONS.find(s => s.key === p.status);
-                                            const recent = (p.history || []).slice(-3).reverse();
-                                            return e('div', { key: p.id, className: 'bg-gray-50 border rounded-lg p-4' },
-                                                e('div', { className: 'flex justify-between items-start mb-2' },
-                                                    e('div', null,
-                                                        e('p', { className: 'text-xs text-gray-500 font-mono' }, `#${p.rank}`),
-                                                        e('p', { className: 'font-semibold text-sm text-gray-900 truncate' }, p.name)
-                                                    ),
-                                                    e('span', { className: 'text-xs bg-white px-2 py-1 rounded border' }, `${status.icon} ${status.label}`)
-                                                ),
-                                                e('p', { className: 'text-xs text-gray-600 mb-3' }, p.phone),
-                                                e('div', { className: 'flex gap-2 mb-3' },
-                                                    e('a', { href: `tel:${p.phone}`, className: 'flex-1 bg-blue-500 text-white text-xs font-medium py-1 px-2 rounded text-center' }, '📞'),
-                                                    e('select', {
-                                                        value: p.status,
-                                                        onChange: (ev) => setDialog({ prospectId: p.id, newStatus: ev.target.value }),
-                                                        className: 'flex-1 text-xs border rounded px-2 py-1'
-                                                    },
-                                                        STATUS_OPTIONS.map(s => e('option', { key: s.key, value: s.key }, s.label))
-                                                    )
-                                                ),
-                                                recent.length > 0 && e('div', { className: 'border-t pt-2 text-xs text-gray-600' },
-                                                    recent.map((h, i) => e('p', { key: i, className: 'mb-1' }, `👤 ${h.user} → ${h.status} ${new Date(h.timestamp).toLocaleDateString('pt-BR')}`))
-                                                )
-                                            );
-                                        })
-                                    )
-                            ),
+    /* ============================= Filtros ============================= */
+    function FilterBar({ search, setSearch, fOwner, setFOwner, fSource, setFSource }) {
+        return (
+            <div className="flex flex-col sm:flex-row gap-2 mb-4">
+                <div className="relative flex-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
+                    <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por nome, contato ou telefone…"
+                        className="w-full border border-slate-200 rounded-lg pl-9 pr-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#E85D1A]/30" />
+                </div>
+                <select value={fOwner} onChange={e=>setFOwner(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
+                    <option value="all">Todos os donos</option>
+                    {USERS.map(u => <option key={u} value={u}>{u}</option>)}
+                    <option value="none">Sem dono</option>
+                </select>
+                <select value={fSource} onChange={e=>setFSource(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
+                    <option value="all">Todas as origens</option>
+                    {Object.entries(SOURCES).map(([k,s]) => <option key={k} value={k}>{s.icon} {s.label}</option>)}
+                </select>
+            </div>
+        );
+    }
 
-                            // Histórico Tab
-                            tab === 'historico' && e('div', null,
-                                Object.values(prospects).flatMap(p => (p.history || []).map(h => ({ ...h, prospect: p.name }))).sort((a, b) => b.timestamp - a.timestamp).slice(0, 20).map((h, i) =>
-                                    e('div', { key: i, className: 'bg-gray-50 border rounded p-3 mb-2 text-sm' },
-                                        e('p', { className: 'font-semibold text-gray-900' }, h.prospect),
-                                        e('p', { className: 'text-xs text-gray-600' }, `${h.user} · ${STATUS_OPTIONS.find(s => s.key === h.status).icon} ${h.status} · ${new Date(h.timestamp).toLocaleDateString('pt-BR')} ${new Date(h.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`),
-                                        h.notes && e('p', { className: 'text-xs italic text-gray-700 mt-1' }, `"${h.notes}"`)
-                                    )
-                                )
-                            ),
+    /* ============================= Funil (Kanban) ============================= */
+    function Funil(props) {
+        const { leads, onMove, onOpen } = props;
+        const [dragId, setDragId] = useState(null);
+        const byStage = k => leads.filter(l => l.stage === k).sort((a,b)=>b.updatedAt-a.updatedAt);
+        const columns = leads.some(l=>l.stage==='perdido') ? [...STAGES, LOST] : STAGES;
 
-                            // Analytics Tab
-                            tab === 'analytics' && e('div', null,
-                                e('p', { className: 'text-sm text-gray-600 mb-4' }, `Status: ${stats.contatados} contatados, ${stats.clientes} clientes, ${stats.taxa}% conversão`)
-                            ),
+        return (
+            <div>
+                <FilterBar {...props} />
+                <div className="flex gap-3 overflow-x-auto no-scrollbar kanban-scroll pb-3">
+                    {columns.map(col => {
+                        const items = byStage(col.key);
+                        const sum = items.reduce((s,l)=>s+(l.value||0),0);
+                        return (
+                            <div key={col.key}
+                                onDragOver={e=>{ e.preventDefault(); e.currentTarget.classList.add('drag-over'); }}
+                                onDragLeave={e=>e.currentTarget.classList.remove('drag-over')}
+                                onDrop={e=>{ e.preventDefault(); e.currentTarget.classList.remove('drag-over'); if(dragId) onMove(dragId, col.key); setDragId(null); }}
+                                className="shrink-0 w-[270px] bg-slate-100/70 rounded-xl p-2 flex flex-col"
+                                style={{ scrollSnapAlign:'start', minHeight:'60vh' }}>
+                                <div className="flex items-center justify-between px-1.5 py-1.5 mb-1">
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-2.5 h-2.5 rounded-full" style={{ background:col.color }}></span>
+                                        <span className="text-sm font-bold text-slate-700">{col.label}</span>
+                                        <span className="text-xs text-slate-400 font-semibold">{items.length}</span>
+                                    </div>
+                                </div>
+                                {sum > 0 && <p className="px-1.5 mb-2 text-[11px] font-semibold text-slate-400">{fmtBRL(sum)}</p>}
+                                <div className="flex flex-col gap-2 overflow-y-auto no-scrollbar flex-1">
+                                    {items.map(l => (
+                                        <KanbanCard key={l.id} lead={l} onOpen={onOpen}
+                                            onDragStart={()=>setDragId(l.id)} onDragEnd={()=>setDragId(null)}
+                                            dragging={dragId===l.id} />
+                                    ))}
+                                    {!items.length && <p className="text-center text-xs text-slate-300 py-6">— vazio —</p>}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        );
+    }
+    function KanbanCard({ lead, onOpen, onDragStart, onDragEnd, dragging }) {
+        const pend = arr(lead.tasks).filter(t=>!t.done);
+        const overdue = pend.some(t => t.due && t.due < now());
+        const pr = PRIORITIES[lead.priority];
+        return (
+            <div draggable onDragStart={onDragStart} onDragEnd={onDragEnd} onClick={()=>onOpen(lead.id)}
+                className={"bg-white rounded-lg border border-slate-200 p-3 cursor-pointer hover:shadow-md hover:border-slate-300 transition " + (dragging?'card-dragging':'')}>
+                <div className="flex items-start justify-between gap-2 mb-1.5">
+                    <p className="text-sm font-semibold text-slate-800 leading-tight line-clamp-2">{lead.name}</p>
+                    <span className="w-2 h-2 rounded-full shrink-0 mt-1" style={{ background:pr.color }} title={'Prioridade '+pr.label}></span>
+                </div>
+                {lead.value > 0 && <p className="text-sm font-bold text-[#0A1F4B] mb-1.5">{fmtBRL(lead.value)}</p>}
+                <div className="flex items-center justify-between">
+                    <SourceBadge source={lead.source} />
+                    <div className="flex items-center gap-1.5">
+                        {pend.length > 0 && <span className={"text-[11px] font-semibold "+(overdue?'text-red-500':'text-slate-400')}>✅ {pend.length}</span>}
+                        {lead.owner && <Avatar name={lead.owner} size={22} />}
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
-                            // Exportar Tab
-                            tab === 'exportar' && e('div', null,
-                                e('button', {
-                                    onClick: () => {
-                                        const blob = new Blob([JSON.stringify(prospects, null, 2)], { type: 'application/json' });
-                                        const url = URL.createObjectURL(blob);
-                                        const a = document.createElement('a');
-                                        a.href = url;
-                                        a.download = `k2loc-crm-${new Date().toISOString().slice(0, 10)}.json`;
-                                        a.click();
-                                    },
-                                    className: 'bg-orange-500 text-white px-4 py-2 rounded text-sm font-medium'
-                                }, '⬇️ Exportar JSON')
-                            )
-                        )
-                    )
-                ),
+    /* ============================= Contatos (tabela) ============================= */
+    function Contatos(props) {
+        const { leads, onOpen } = props;
+        const rows = [...leads].sort((a,b)=>b.updatedAt-a.updatedAt);
+        return (
+            <div>
+                <FilterBar {...props} />
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                    <div className="overflow-x-auto no-scrollbar">
+                        <table className="w-full text-sm">
+                            <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
+                                <tr>
+                                    <th className="text-left font-semibold px-4 py-3">Lead</th>
+                                    <th className="text-left font-semibold px-4 py-3 hidden sm:table-cell">Etapa</th>
+                                    <th className="text-left font-semibold px-4 py-3 hidden md:table-cell">Origem</th>
+                                    <th className="text-right font-semibold px-4 py-3 hidden lg:table-cell">Valor</th>
+                                    <th className="text-left font-semibold px-4 py-3 hidden md:table-cell">Dono</th>
+                                    <th className="text-left font-semibold px-4 py-3">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {rows.map(l => { const st = stageOf(l.stage); return (
+                                    <tr key={l.id} onClick={()=>onOpen(l.id)} className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer">
+                                        <td className="px-4 py-3">
+                                            <p className="font-semibold text-slate-800">{l.name}</p>
+                                            <p className="text-xs text-slate-400">{l.phone || l.contact || '—'}</p>
+                                        </td>
+                                        <td className="px-4 py-3 hidden sm:table-cell"><Badge color={st.color} subtle>{st.label}</Badge></td>
+                                        <td className="px-4 py-3 hidden md:table-cell"><SourceBadge source={l.source} /></td>
+                                        <td className="px-4 py-3 text-right hidden lg:table-cell font-semibold text-slate-700">{l.value?fmtBRL(l.value):'—'}</td>
+                                        <td className="px-4 py-3 hidden md:table-cell">{l.owner ? <div className="flex items-center gap-1.5"><Avatar name={l.owner} size={22}/><span className="text-xs">{l.owner}</span></div> : <span className="text-xs text-slate-300">—</span>}</td>
+                                        <td className="px-4 py-3" onClick={e=>e.stopPropagation()}>
+                                            <div className="flex gap-1">
+                                                {l.phone && <a href={waLink(l.phone)} target="_blank" title="WhatsApp" className="w-8 h-8 flex items-center justify-center rounded-lg bg-green-50 hover:bg-green-100 text-green-600">💬</a>}
+                                                {l.phone && <a href={'tel:'+digits(l.phone)} title="Ligar" className="w-8 h-8 flex items-center justify-center rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600">📞</a>}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ); })}
+                                {!rows.length && <tr><td colSpan="6" className="text-center text-slate-400 py-10">Nenhum lead encontrado.</td></tr>}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <p className="text-xs text-slate-400 mt-2">{rows.length} lead(s)</p>
+            </div>
+        );
+    }
 
-                // Dialog
-                dialog && e('div', { className: 'fixed inset-0 bg-black/50 flex items-center justify-center z-50' },
-                    e('div', { className: 'bg-white rounded-lg p-6 max-w-md w-full' },
-                        e('h3', { className: 'text-lg font-semibold mb-4' }, `Confirmar: ${dialog.newStatus}`),
-                        e('textarea', {
-                            value: notes,
-                            onChange: (ev) => setNotes(ev.target.value),
-                            placeholder: 'Notas (opcional)',
-                            className: 'w-full border rounded px-3 py-2 text-sm mb-4 h-20',
-                            maxLength: 500
-                        }),
-                        e('p', { className: 'text-xs text-gray-600 mb-4' }, `Registrando como: ${user}`),
-                        e('div', { className: 'flex gap-2' },
-                            e('button', {
-                                onClick: () => setDialog(null),
-                                className: 'flex-1 border rounded px-3 py-2 text-sm font-medium'
-                            }, 'Cancelar'),
-                            e('button', {
-                                onClick: () => saveProspect(dialog.prospectId, dialog.newStatus),
-                                className: 'flex-1 bg-green-500 text-white rounded px-3 py-2 text-sm font-medium'
-                            }, 'Salvar')
-                        )
-                    )
-                )
-            );
-        }
+    /* ============================= Atividades ============================= */
+    function Atividades({ tasks, onOpen, onToggle }) {
+        const [filter, setFilter] = useState('all');
+        const list = tasks
+            .filter(t => filter==='all' || (t.lead.owner||'') === filter)
+            .sort((a,b) => (a.due||9e15) - (b.due||9e15));
+        const overdue = list.filter(t => t.due && t.due < now());
+        return (
+            <div>
+                <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
+                    <div>
+                        <h2 className="text-lg font-bold text-slate-800">Atividades pendentes</h2>
+                        <p className="text-sm text-slate-400">{list.length} tarefa(s) · <span className="text-red-500 font-semibold">{overdue.length} atrasada(s)</span></p>
+                    </div>
+                    <select value={filter} onChange={e=>setFilter(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
+                        <option value="all">Todos</option>
+                        {USERS.map(u => <option key={u} value={u}>{u}</option>)}
+                        <option value="">Sem dono</option>
+                    </select>
+                </div>
+                <div className="flex flex-col gap-2">
+                    {list.map(t => {
+                        const late = t.due && t.due < now();
+                        return (
+                            <div key={t.id} className="bg-white rounded-lg border border-slate-200 p-3 flex items-center gap-3">
+                                <button onClick={()=>onToggle(t.lead.id, t.id)} className="w-5 h-5 rounded border-2 border-slate-300 hover:border-[#E85D1A] shrink-0"></button>
+                                <div className="flex-1 min-w-0 cursor-pointer" onClick={()=>onOpen(t.lead.id)}>
+                                    <p className="text-sm font-medium text-slate-800 truncate">{t.title}</p>
+                                    <p className="text-xs text-slate-400 truncate">{t.lead.name}</p>
+                                </div>
+                                {t.due && <span className={"text-xs font-semibold shrink-0 "+(late?'text-red-500':'text-slate-500')}>{late?'⚠️ ':'📅 '}{fmtDate(t.due)}</span>}
+                                {t.lead.owner && <Avatar name={t.lead.owner} size={24} />}
+                            </div>
+                        );
+                    })}
+                    {!list.length && <div className="text-center text-slate-400 py-12 bg-white rounded-xl border border-slate-200">🎉 Nenhuma tarefa pendente!</div>}
+                </div>
+            </div>
+        );
+    }
 
-        ReactDOM.render(e(App), document.getElementById('root'));
+    /* ============================= Dashboard ============================= */
+    function Dashboard({ leads, stats }) {
+        const byStage = STAGES.map(s => ({ ...s, n: leads.filter(l=>l.stage===s.key).length }));
+        const maxStage = Math.max(1, ...byStage.map(s=>s.n));
+        const bySource = Object.entries(SOURCES).map(([k,s]) => ({ ...s, k, n: leads.filter(l=>l.source===k).length })).filter(s=>s.n>0).sort((a,b)=>b.n-a.n);
+        const maxSrc = Math.max(1, ...bySource.map(s=>s.n));
+        const byOwner = [...USERS, ''].map(u => ({ u: u||'Sem dono', n: leads.filter(l=>(l.owner||'')===u).length, won: leads.filter(l=>(l.owner||'')===u && l.stage==='ganho').length }));
+        const KPI = ({ label, value, sub, color }) => (
+            <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <p className="text-xs text-slate-400 uppercase tracking-wide font-semibold">{label}</p>
+                <p className="text-2xl font-extrabold mt-1" style={{ color }}>{value}</p>
+                {sub && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
+            </div>
+        );
+        return (
+            <div className="flex flex-col gap-5">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <KPI label="Leads no funil" value={stats.openCount} sub={fmtBRL(stats.openValue)+' em aberto'} color="#0A1F4B" />
+                    <KPI label="Ganhos no mês" value={stats.wonMonthCount} sub={fmtBRL(stats.wonMonthValue)} color="#22C55E" />
+                    <KPI label="Taxa de conversão" value={stats.conv+'%'} sub={stats.wonCount+' ganhos no total'} color="#E85D1A" />
+                    <KPI label="Tarefas pendentes" value={stats.pendingTasks.length} sub="a fazer" color="#0A1F4B" />
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                    <div className="bg-white rounded-xl border border-slate-200 p-5">
+                        <h3 className="text-sm font-bold text-slate-700 mb-4">Leads por etapa</h3>
+                        <div className="flex flex-col gap-3">
+                            {byStage.map(s => (
+                                <div key={s.key} className="flex items-center gap-3">
+                                    <span className="text-xs text-slate-500 w-28 shrink-0">{s.label}</span>
+                                    <div className="flex-1 bg-slate-100 rounded-full h-5 overflow-hidden">
+                                        <div className="h-5 rounded-full flex items-center justify-end pr-2 text-[11px] font-bold text-white transition-all"
+                                             style={{ width: Math.max(8, s.n/maxStage*100)+'%', background:s.color }}>{s.n||''}</div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="bg-white rounded-xl border border-slate-200 p-5">
+                        <h3 className="text-sm font-bold text-slate-700 mb-4">Origem dos leads</h3>
+                        <div className="flex flex-col gap-3">
+                            {bySource.map(s => (
+                                <div key={s.k} className="flex items-center gap-3">
+                                    <span className="text-xs text-slate-500 w-28 shrink-0">{s.icon} {s.label}</span>
+                                    <div className="flex-1 bg-slate-100 rounded-full h-5 overflow-hidden">
+                                        <div className="h-5 rounded-full flex items-center justify-end pr-2 text-[11px] font-bold text-white"
+                                             style={{ width: Math.max(8, s.n/maxSrc*100)+'%', background:s.color }}>{s.n}</div>
+                                    </div>
+                                </div>
+                            ))}
+                            {!bySource.length && <p className="text-sm text-slate-400">Sem dados ainda.</p>}
+                        </div>
+                    </div>
+                </div>
+                <div className="bg-white rounded-xl border border-slate-200 p-5">
+                    <h3 className="text-sm font-bold text-slate-700 mb-4">Desempenho por vendedor</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {byOwner.map(o => (
+                            <div key={o.u} className="flex items-center gap-3 bg-slate-50 rounded-lg p-3">
+                                <Avatar name={o.u==='Sem dono'?'':o.u} size={38} />
+                                <div>
+                                    <p className="text-sm font-semibold text-slate-800">{o.u}</p>
+                                    <p className="text-xs text-slate-400">{o.n} leads · <span className="text-green-600 font-semibold">{o.won} ganhos</span></p>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    /* ============================= Entrada de Leads ============================= */
+    function Entrada({ onCreate, onImport, endpoint }) {
+        const [f, setF] = useState({ name:'', phone:'', source:'whatsapp', owner:'', value:'' });
+        const [csv, setCsv] = useState('');
+        const [copied, setCopied] = useState(false);
+        const submit = (e) => { e.preventDefault(); if(!f.name.trim() && !f.phone.trim()) return; onCreate(f); setF({ name:'', phone:'', source:f.source, owner:f.owner, value:'' }); };
+        const doImport = () => {
+            const lines = csv.split('\n').map(l=>l.trim()).filter(Boolean);
+            const list = lines.map(line => {
+                const [name, phone, email] = line.split(/[,;\t]/).map(x=>(x||'').trim());
+                return { name, phone, email, source:'planilha' };
+            }).filter(x=>x.name || x.phone);
+            if (list.length) { onImport(list); setCsv(''); }
+        };
+        const payload = '{\n  "name": "Nome da empresa/cliente",\n  "phone": "(85) 99999-9999",\n  "source": "whatsapp",\n  "stage": "novo"\n}';
+        const copy = () => { navigator.clipboard?.writeText(endpoint).then(()=>{ setCopied(true); setTimeout(()=>setCopied(false),1500); }); };
+        return (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                <div className="bg-white rounded-xl border border-slate-200 p-5">
+                    <h3 className="text-base font-bold text-slate-800 mb-1">➕ Cadastro rápido</h3>
+                    <p className="text-sm text-slate-400 mb-4">Entrou um contato agora? Joga aqui que ele cai direto no funil.</p>
+                    <form onSubmit={submit} className="flex flex-col gap-3">
+                        <input value={f.name} onChange={e=>setF({...f,name:e.target.value})} placeholder="Nome da empresa / cliente"
+                            className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E85D1A]/30" />
+                        <input value={f.phone} onChange={e=>setF({...f,phone:e.target.value})} placeholder="Telefone / WhatsApp"
+                            className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E85D1A]/30" />
+                        <div className="grid grid-cols-2 gap-3">
+                            <select value={f.source} onChange={e=>setF({...f,source:e.target.value})} className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
+                                {Object.entries(SOURCES).map(([k,s]) => <option key={k} value={k}>{s.icon} {s.label}</option>)}
+                            </select>
+                            <select value={f.owner} onChange={e=>setF({...f,owner:e.target.value})} className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
+                                <option value="">Sem dono</option>
+                                {USERS.map(u => <option key={u} value={u}>{u}</option>)}
+                            </select>
+                        </div>
+                        <button className="bg-[#E85D1A] hover:bg-[#d24e10] text-white text-sm font-semibold py-2.5 rounded-lg transition">Adicionar ao funil</button>
+                    </form>
+
+                    <div className="mt-6 pt-5 border-t border-slate-100">
+                        <h4 className="text-sm font-bold text-slate-800 mb-1">📊 Importar de planilha</h4>
+                        <p className="text-xs text-slate-400 mb-2">Cole uma linha por lead: <code className="bg-slate-100 px-1 rounded">Nome, Telefone, Email</code></p>
+                        <textarea value={csv} onChange={e=>setCsv(e.target.value)} rows="4" placeholder={"ATHOS CONSTRUCOES, (85) 3289-3612\nDIRECIONAL, (31) 3431-5686, contato@dir.com"}
+                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#E85D1A]/30"></textarea>
+                        <button onClick={doImport} className="mt-2 bg-slate-800 hover:bg-slate-900 text-white text-sm font-semibold px-4 py-2 rounded-lg transition">Importar</button>
+                    </div>
+                </div>
+
+                <div className="bg-white rounded-xl border border-slate-200 p-5">
+                    <h3 className="text-base font-bold text-slate-800 mb-1">🔌 Integração automática</h3>
+                    <p className="text-sm text-slate-400 mb-4">Para os leads de <b>WhatsApp</b>, <b>Instagram/Facebook (Meta)</b> ou do <b>site</b> caírem sozinhos no funil, conecte a origem a este endereço usando uma automação (Make, Zapier ou n8n).</p>
+                    <label className="text-xs font-semibold text-slate-500 uppercase">Endpoint (POST)</label>
+                    <div className="flex gap-2 mt-1 mb-4">
+                        <code className="flex-1 bg-slate-900 text-green-300 text-xs rounded-lg px-3 py-2 overflow-x-auto no-scrollbar">{endpoint}</code>
+                        <button onClick={copy} className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-3 rounded-lg shrink-0">{copied?'✓':'Copiar'}</button>
+                    </div>
+                    <label className="text-xs font-semibold text-slate-500 uppercase">Corpo (JSON)</label>
+                    <pre className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-700 mt-1 overflow-x-auto no-scrollbar">{payload}</pre>
+                    <div className="mt-4 text-xs text-slate-500 space-y-1.5">
+                        <p>💬 <b>WhatsApp</b> — use a API oficial (Meta) ou um bot (ex.: Z-API, Twilio) e mande um POST a cada nova conversa.</p>
+                        <p>📸 <b>Instagram / Facebook Lead Ads</b> — no Make/Zapier, gatilho "Novo Lead" → ação "HTTP POST" para o endpoint acima.</p>
+                        <p>🌐 <b>Site / Landing</b> — o formulário "Peça um orçamento" envia o POST direto.</p>
+                        <p className="text-amber-600">⚠️ Requer as regras do Firebase abertas para escrita (veja o README).</p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    /* ============================= Modal Novo Lead ============================= */
+    function AddLeadModal({ onClose, onCreate }) {
+        const [f, setF] = useState({ name:'', contact:'', phone:'', email:'', source:'manual', value:'', owner:'', priority:'media' });
+        const submit = (e) => { e.preventDefault(); if(!f.name.trim()){ return; } onCreate(f); onClose(); };
+        const inp = "border border-slate-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-[#E85D1A]/30";
+        return (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 fade-in" onClick={onClose}>
+                <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto no-scrollbar" onClick={e=>e.stopPropagation()}>
+                    <div className="flex items-center justify-between p-5 border-b border-slate-100">
+                        <h3 className="text-lg font-bold text-slate-800">Novo Lead</h3>
+                        <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl">✕</button>
+                    </div>
+                    <form onSubmit={submit} className="p-5 flex flex-col gap-3">
+                        <div><label className="text-xs font-semibold text-slate-500">Empresa / Cliente *</label>
+                            <input autoFocus value={f.name} onChange={e=>setF({...f,name:e.target.value})} className={inp} /></div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div><label className="text-xs font-semibold text-slate-500">Contato</label>
+                                <input value={f.contact} onChange={e=>setF({...f,contact:e.target.value})} className={inp} placeholder="Nome da pessoa" /></div>
+                            <div><label className="text-xs font-semibold text-slate-500">Telefone</label>
+                                <input value={f.phone} onChange={e=>setF({...f,phone:e.target.value})} className={inp} /></div>
+                        </div>
+                        <div><label className="text-xs font-semibold text-slate-500">E-mail</label>
+                            <input value={f.email} onChange={e=>setF({...f,email:e.target.value})} className={inp} /></div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div><label className="text-xs font-semibold text-slate-500">Origem</label>
+                                <select value={f.source} onChange={e=>setF({...f,source:e.target.value})} className={inp+" bg-white"}>
+                                    {Object.entries(SOURCES).map(([k,s]) => <option key={k} value={k}>{s.icon} {s.label}</option>)}
+                                </select></div>
+                            <div><label className="text-xs font-semibold text-slate-500">Valor estimado (R$)</label>
+                                <input type="number" value={f.value} onChange={e=>setF({...f,value:e.target.value})} className={inp} placeholder="0" /></div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div><label className="text-xs font-semibold text-slate-500">Dono</label>
+                                <select value={f.owner} onChange={e=>setF({...f,owner:e.target.value})} className={inp+" bg-white"}>
+                                    <option value="">Sem dono</option>
+                                    {USERS.map(u => <option key={u} value={u}>{u}</option>)}
+                                </select></div>
+                            <div><label className="text-xs font-semibold text-slate-500">Prioridade</label>
+                                <select value={f.priority} onChange={e=>setF({...f,priority:e.target.value})} className={inp+" bg-white"}>
+                                    {Object.entries(PRIORITIES).map(([k,p]) => <option key={k} value={k}>{p.label}</option>)}
+                                </select></div>
+                        </div>
+                        <div className="flex gap-2 mt-2">
+                            <button type="button" onClick={onClose} className="flex-1 border border-slate-200 rounded-lg py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancelar</button>
+                            <button className="flex-1 bg-[#E85D1A] hover:bg-[#d24e10] text-white rounded-lg py-2.5 text-sm font-semibold">Criar lead</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        );
+    }
+
+    /* ============================= Drawer do Lead ============================= */
+    function LeadDrawer({ lead, user, onClose, onWrite, onMove, onAddNote, onAddTask, onToggleTask, onMarkLost, onDelete }) {
+        const [tab, setTab] = useState('timeline');
+        const [note, setNote] = useState('');
+        const [taskTitle, setTaskTitle] = useState('');
+        const [taskDue, setTaskDue] = useState('');
+        const [edit, setEdit] = useState(false);
+        const [ef, setEf] = useState(lead);
+        useEffect(()=>{ setEf(lead); }, [lead.id]);
+        const st = stageOf(lead.stage);
+        const pr = PRIORITIES[lead.priority];
+
+        const timeline = useMemo(() => {
+            const ev = [];
+            arr(lead.history).forEach(h => ev.push({ ts:h.ts, kind: h.type==='created'?'created':'stage', user:h.user, from:h.from, to:h.to }));
+            arr(lead.notes).forEach(n => ev.push({ ts:n.ts, kind:'note', user:n.user, text:n.text }));
+            arr(lead.tasks).forEach(t => ev.push({ ts:t.ts, kind:'task', user:t.user, text:t.title, due:t.due, done:t.done }));
+            return ev.sort((a,b)=>b.ts-a.ts);
+        }, [lead]);
+
+        const saveEdit = () => {
+            onWrite(lead.id, { name:ef.name, contact:ef.contact, phone:ef.phone, email:ef.email, value:Number(ef.value)||0, owner:ef.owner, priority:ef.priority });
+            setEdit(false);
+        };
+        const submitNote = (e) => { e.preventDefault(); if(!note.trim())return; onAddNote(lead.id, note); setNote(''); };
+        const submitTask = (e) => { e.preventDefault(); if(!taskTitle.trim())return; onAddTask(lead.id, taskTitle, taskDue?new Date(taskDue+'T12:00').getTime():null); setTaskTitle(''); setTaskDue(''); };
+        const inp = "border border-slate-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-[#E85D1A]/30";
+
+        return (
+            <div className="fixed inset-0 z-50 flex justify-end">
+                <div className="absolute inset-0 bg-black/40 fade-in" onClick={onClose}></div>
+                <div className="relative w-full sm:max-w-md bg-slate-50 h-full overflow-y-auto no-scrollbar drawer-in shadow-2xl">
+                    {/* Header */}
+                    <div className="bg-white border-b border-slate-200 p-4 sticky top-0 z-10">
+                        <div className="flex items-start justify-between gap-2 mb-3">
+                            <div className="min-w-0">
+                                {edit
+                                    ? <input value={ef.name} onChange={e=>setEf({...ef,name:e.target.value})} className={inp+" font-bold"} />
+                                    : <h2 className="text-lg font-bold text-slate-800 leading-tight">{lead.name}</h2>}
+                                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                    <SourceBadge source={lead.source} />
+                                    <span className="text-xs font-semibold" style={{ color:pr.color }}>● {pr.label}</span>
+                                </div>
+                            </div>
+                            <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl shrink-0">✕</button>
+                        </div>
+                        {/* Quick actions */}
+                        <div className="flex gap-2">
+                            {lead.phone && <a href={waLink(lead.phone)} target="_blank" className="flex-1 flex items-center justify-center gap-1 bg-green-500 hover:bg-green-600 text-white text-xs font-semibold py-2 rounded-lg">💬 WhatsApp</a>}
+                            {lead.phone && <a href={'tel:'+digits(lead.phone)} className="flex-1 flex items-center justify-center gap-1 bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold py-2 rounded-lg">📞 Ligar</a>}
+                            {lead.email && <a href={'mailto:'+lead.email} className="flex-1 flex items-center justify-center gap-1 bg-slate-600 hover:bg-slate-700 text-white text-xs font-semibold py-2 rounded-lg">✉️ E-mail</a>}
+                        </div>
+                    </div>
+
+                    {/* Etapa */}
+                    <div className="p-4">
+                        <label className="text-xs font-semibold text-slate-500 uppercase">Etapa do funil</label>
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                            {STAGES.map(s => (
+                                <button key={s.key} onClick={()=>onMove(lead.id, s.key)}
+                                    className={"text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition "+(lead.stage===s.key?'text-white border-transparent':'bg-white text-slate-600 border-slate-200 hover:border-slate-300')}
+                                    style={ lead.stage===s.key ? { background:s.color } : {} }>{s.label}</button>
+                            ))}
+                        </div>
+                        {lead.stage==='perdido' && <p className="mt-2 text-xs text-red-500 font-semibold">⛔ Perdido{lead.lostReason?': '+lead.lostReason:''}</p>}
+                    </div>
+
+                    {/* Dados */}
+                    <div className="px-4 pb-4">
+                        <div className="bg-white rounded-xl border border-slate-200 p-4">
+                            <div className="flex items-center justify-between mb-3">
+                                <h4 className="text-sm font-bold text-slate-700">Dados</h4>
+                                {edit
+                                    ? <div className="flex gap-2"><button onClick={()=>{setEdit(false);setEf(lead);}} className="text-xs text-slate-500">Cancelar</button><button onClick={saveEdit} className="text-xs font-semibold text-[#E85D1A]">Salvar</button></div>
+                                    : <button onClick={()=>setEdit(true)} className="text-xs font-semibold text-slate-500 hover:text-slate-800">✏️ Editar</button>}
+                            </div>
+                            {edit ? (
+                                <div className="flex flex-col gap-2">
+                                    <input value={ef.contact} onChange={e=>setEf({...ef,contact:e.target.value})} className={inp} placeholder="Contato" />
+                                    <input value={ef.phone} onChange={e=>setEf({...ef,phone:e.target.value})} className={inp} placeholder="Telefone" />
+                                    <input value={ef.email} onChange={e=>setEf({...ef,email:e.target.value})} className={inp} placeholder="E-mail" />
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <input type="number" value={ef.value} onChange={e=>setEf({...ef,value:e.target.value})} className={inp} placeholder="Valor R$" />
+                                        <select value={ef.owner} onChange={e=>setEf({...ef,owner:e.target.value})} className={inp+" bg-white"}>
+                                            <option value="">Sem dono</option>{USERS.map(u=><option key={u} value={u}>{u}</option>)}
+                                        </select>
+                                    </div>
+                                    <select value={ef.priority} onChange={e=>setEf({...ef,priority:e.target.value})} className={inp+" bg-white"}>
+                                        {Object.entries(PRIORITIES).map(([k,p])=><option key={k} value={k}>Prioridade {p.label}</option>)}
+                                    </select>
+                                </div>
+                            ) : (
+                                <div className="text-sm space-y-2">
+                                    <Row label="Contato" value={lead.contact || '—'} />
+                                    <Row label="Telefone" value={lead.phone || '—'} />
+                                    <Row label="E-mail" value={lead.email || '—'} />
+                                    <Row label="Valor" value={lead.value?fmtBRL(lead.value):'—'} bold />
+                                    <Row label="Dono" value={lead.owner || 'Sem dono'} />
+                                    <Row label="Criado" value={fmtDate(lead.createdAt)} />
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Tabs notas/tarefas/timeline */}
+                    <div className="px-4">
+                        <div className="flex gap-1 bg-slate-200/60 p-1 rounded-lg">
+                            {[['timeline','Timeline'],['notes','Anotações'],['tasks','Tarefas']].map(([k,l])=>(
+                                <button key={k} onClick={()=>setTab(k)} className={"flex-1 text-xs font-semibold py-1.5 rounded-md transition "+(tab===k?'bg-white text-slate-800 shadow-sm':'text-slate-500')}>{l}</button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="p-4">
+                        {tab==='notes' && (
+                            <div>
+                                <form onSubmit={submitNote} className="mb-3">
+                                    <textarea value={note} onChange={e=>setNote(e.target.value)} rows="2" placeholder="Escreva uma anotação…" className={inp}></textarea>
+                                    <button className="mt-2 w-full bg-[#0A1F4B] hover:bg-[#0a1a3a] text-white text-sm font-semibold py-2 rounded-lg">Salvar anotação</button>
+                                </form>
+                                <div className="flex flex-col gap-2">
+                                    {arr(lead.notes).slice().reverse().map(n=>(
+                                        <div key={n.id} className="bg-white rounded-lg border border-slate-200 p-3">
+                                            <p className="text-sm text-slate-700 whitespace-pre-wrap">{n.text}</p>
+                                            <p className="text-[11px] text-slate-400 mt-1.5 flex items-center gap-1"><Avatar name={n.user} size={16} /> {n.user} · {timeAgo(n.ts)}</p>
+                                        </div>
+                                    ))}
+                                    {!arr(lead.notes).length && <p className="text-center text-sm text-slate-300 py-6">Nenhuma anotação ainda.</p>}
+                                </div>
+                            </div>
+                        )}
+                        {tab==='tasks' && (
+                            <div>
+                                <form onSubmit={submitTask} className="mb-3 flex flex-col gap-2">
+                                    <input value={taskTitle} onChange={e=>setTaskTitle(e.target.value)} placeholder="Nova tarefa (ex.: Ligar quinta 14h)" className={inp} />
+                                    <div className="flex gap-2">
+                                        <input type="date" value={taskDue} onChange={e=>setTaskDue(e.target.value)} className={inp} />
+                                        <button className="bg-[#0A1F4B] hover:bg-[#0a1a3a] text-white text-sm font-semibold px-4 rounded-lg shrink-0">Add</button>
+                                    </div>
+                                </form>
+                                <div className="flex flex-col gap-2">
+                                    {arr(lead.tasks).slice().sort((a,b)=>(a.done-b.done)||((a.due||9e15)-(b.due||9e15))).map(t=>{
+                                        const late = t.due && t.due<now() && !t.done;
+                                        return (
+                                            <div key={t.id} className="bg-white rounded-lg border border-slate-200 p-3 flex items-center gap-2.5">
+                                                <button onClick={()=>onToggleTask(lead.id,t.id)} className={"w-5 h-5 rounded border-2 shrink-0 flex items-center justify-center "+(t.done?'bg-green-500 border-green-500 text-white text-xs':'border-slate-300 hover:border-[#E85D1A]')}>{t.done?'✓':''}</button>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className={"text-sm "+(t.done?'line-through text-slate-400':'text-slate-700')}>{t.title}</p>
+                                                    {t.due && <p className={"text-[11px] font-semibold "+(late?'text-red-500':'text-slate-400')}>{late?'⚠️ ':'📅 '}{fmtDate(t.due)}</p>}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                    {!arr(lead.tasks).length && <p className="text-center text-sm text-slate-300 py-6">Nenhuma tarefa ainda.</p>}
+                                </div>
+                            </div>
+                        )}
+                        {tab==='timeline' && (
+                            <div className="relative pl-5">
+                                <div className="absolute left-[7px] top-1 bottom-1 w-px bg-slate-200"></div>
+                                {timeline.map((ev,i)=>(
+                                    <div key={i} className="relative mb-4">
+                                        <span className="absolute -left-5 top-0.5 w-3.5 h-3.5 rounded-full border-2 border-white" style={{ background: ev.kind==='note'?'#0A1F4B':ev.kind==='task'?'#EAB308':ev.kind==='created'?'#94A3B8':stageOf(ev.to).color }}></span>
+                                        <p className="text-sm text-slate-700">
+                                            {ev.kind==='created' && <span>🆕 Lead criado</span>}
+                                            {ev.kind==='stage' && <span>➡️ Movido para <b>{stageOf(ev.to).label}</b></span>}
+                                            {ev.kind==='note' && <span>📝 {ev.text}</span>}
+                                            {ev.kind==='task' && <span>{ev.done?'✅':'⬜'} Tarefa: {ev.text}</span>}
+                                        </p>
+                                        <p className="text-[11px] text-slate-400 mt-0.5">{ev.user||'Sistema'} · {fmtDateTime(ev.ts)}</p>
+                                    </div>
+                                ))}
+                                {!timeline.length && <p className="text-sm text-slate-300 py-4">Sem histórico.</p>}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Rodapé ações */}
+                    <div className="p-4 border-t border-slate-200 flex gap-2">
+                        <button onClick={()=>onMove(lead.id,'ganho')} className="flex-1 bg-green-500 hover:bg-green-600 text-white text-sm font-semibold py-2.5 rounded-lg">✓ Ganhou</button>
+                        <button onClick={()=>{ const r = prompt('Motivo da perda (opcional):')||''; onMarkLost(lead.id, r); }} className="flex-1 border border-red-200 text-red-500 hover:bg-red-50 text-sm font-semibold py-2.5 rounded-lg">✕ Perdeu</button>
+                        <button onClick={()=>{ if(confirm('Excluir este lead? Não dá pra desfazer.')) onDelete(lead.id); }} className="px-3 border border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-200 rounded-lg">🗑️</button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+    function Row({ label, value, bold }) {
+        return (
+            <div className="flex justify-between gap-3">
+                <span className="text-slate-400">{label}</span>
+                <span className={"text-slate-700 text-right "+(bold?'font-bold':'')}>{value}</span>
+            </div>
+        );
+    }
+
+    /* ============================= Mount ============================= */
+    const style = document.createElement('style');
+    style.textContent = '@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}';
+    document.head.appendChild(style);
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
     </script>
 </body>
 </html>
