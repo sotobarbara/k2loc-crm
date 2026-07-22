@@ -13,20 +13,28 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
         :root { --navy:#0A1F4B; --orange:#E85D1A; }
-        * { -webkit-tap-highlight-color: transparent; }
-        body { font-family: 'Inter', sans-serif; background:#eef1f6; color:#0f172a; }
-        .no-scrollbar::-webkit-scrollbar { height:8px; width:8px; }
-        .no-scrollbar::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:8px; }
+        * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+        body { font-family: 'Inter', system-ui, sans-serif; background:#f6f7f9; color:#111827; -webkit-font-smoothing:antialiased; letter-spacing:-0.01em; }
+        .no-scrollbar::-webkit-scrollbar { height:6px; width:6px; }
+        .no-scrollbar::-webkit-scrollbar-thumb { background:#d7dae0; border-radius:8px; }
         .no-scrollbar::-webkit-scrollbar-track { background:transparent; }
-        .drawer-in { animation: drawerIn .22s cubic-bezier(.4,0,.2,1); }
+        .card { background:#fff; border:1px solid #ececef; border-radius:14px; box-shadow:0 1px 2px rgba(16,24,40,.04); }
+        .soft-shadow { box-shadow:0 1px 3px rgba(16,24,40,.06), 0 1px 2px rgba(16,24,40,.04); }
+        .lift { transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease; }
+        .lift:hover { box-shadow:0 6px 20px rgba(16,24,40,.10); border-color:#dfe1e6; transform:translateY(-1px); }
+        .drawer-in { animation: drawerIn .24s cubic-bezier(.32,.72,0,1); }
         @keyframes drawerIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
         .fade-in { animation: fadeIn .18s ease; }
         @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
-        .toast-in { animation: toastIn .25s cubic-bezier(.4,0,.2,1); }
+        .pop-in { animation: popIn .2s cubic-bezier(.32,.72,0,1); }
+        @keyframes popIn { from { opacity:0; transform: translateY(8px) scale(.98); } to { opacity:1; transform: none; } }
+        .toast-in { animation: toastIn .25s cubic-bezier(.32,.72,0,1); }
         @keyframes toastIn { from { opacity:0; transform: translateY(12px); } to { opacity:1; transform: translateY(0); } }
-        .drag-over { background:#e0e7ff !important; outline:2px dashed #6366f1; outline-offset:-4px; }
+        .drag-over { background:#eef2ff !important; outline:2px dashed #c7d2fe; outline-offset:-5px; }
         .card-dragging { opacity:.4; }
         .kanban-scroll { scroll-snap-type: x proximity; }
+        .tap { transition: background .12s ease; }
+        .tap:active { background:#f3f4f6; }
     </style>
 </head>
 <body>
@@ -39,6 +47,19 @@ const {
   useMemo,
   useRef
 } = React;
+function useIsMobile() {
+  const q = '(max-width: 768px)';
+  const [m, setM] = useState(() => typeof window !== 'undefined' && window.matchMedia ? window.matchMedia(q).matches : false);
+  useEffect(() => {
+    const mq = window.matchMedia(q);
+    const h = e => setM(e.matches);
+    mq.addEventListener ? mq.addEventListener('change', h) : mq.addListener(h);
+    return () => {
+      mq.removeEventListener ? mq.removeEventListener('change', h) : mq.removeListener(h);
+    };
+  }, []);
+  return m;
+}
 
 /* ============================= Firebase ============================= */
 const firebaseConfig = {
@@ -444,6 +465,30 @@ function normalize(raw) {
 }
 
 /* ============================= UI átomos ============================= */
+const ICONS = {
+  funil: 'M22 3H2l8 9.46V19l4 2v-8.54L22 3z',
+  contatos: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75',
+  atividades: 'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11',
+  dashboard: 'M3 3v18h18M7 15l3-3 3 2 4-5',
+  entrada: 'M22 12h-6l-2 3h-4l-2-3H2M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z'
+};
+function Icon({
+  name,
+  size = 18
+}) {
+  return /*#__PURE__*/React.createElement("svg", {
+    width: size,
+    height: size,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: "1.9",
+    strokeLinecap: "round",
+    strokeLinejoin: "round"
+  }, /*#__PURE__*/React.createElement("path", {
+    d: ICONS[name] || ''
+  }));
+}
 function Badge({
   children,
   color,
@@ -803,7 +848,7 @@ function App() {
   }), toast && /*#__PURE__*/React.createElement("div", {
     className: "fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] toast-in"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "bg-slate-900 text-white text-sm font-medium px-4 py-2.5 rounded-lg shadow-xl"
+    className: "bg-slate-900 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-xl"
   }, toast)));
 }
 
@@ -837,7 +882,7 @@ function TopBar({
     label: '—'
   };
   return /*#__PURE__*/React.createElement("header", {
-    className: "bg-white border-b border-slate-200 sticky top-0 z-40"
+    className: "bg-white border-b border-[#ececef] sticky top-0 z-40"
   }, /*#__PURE__*/React.createElement("div", {
     className: "max-w-[1400px] mx-auto px-3 sm:px-5 h-16 flex items-center gap-4"
   }, /*#__PURE__*/React.createElement("img", {
@@ -867,7 +912,7 @@ function TopBar({
     className: "hidden sm:inline"
   }, SY.label)), /*#__PURE__*/React.createElement("button", {
     onClick: onAdd,
-    className: "flex items-center gap-1.5 bg-[#E85D1A] hover:bg-[#d24e10] text-white text-sm font-semibold px-3 sm:px-4 py-2 rounded-lg shadow-sm transition"
+    className: "flex items-center gap-1.5 bg-[#E85D1A] hover:bg-[#d24e10] active:scale-95 text-white text-sm font-semibold px-3 sm:px-4 py-2 rounded-xl shadow-sm transition"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-lg leading-none"
   }, "+"), /*#__PURE__*/React.createElement("span", {
@@ -880,7 +925,7 @@ function TopBar({
   }), /*#__PURE__*/React.createElement("select", {
     value: user,
     onChange: e => setUser(e.target.value),
-    className: "text-sm font-medium border border-slate-200 rounded-lg px-2 py-1.5 bg-white hover:border-slate-300 cursor-pointer"
+    className: "text-sm font-medium border border-[#ececef] rounded-lg px-2 py-1.5 bg-white hover:border-slate-300 cursor-pointer"
   }, USERS.map(u => /*#__PURE__*/React.createElement("option", {
     key: u,
     value: u
@@ -892,36 +937,39 @@ function NavTabs({
 }) {
   const tabs = [{
     k: 'funil',
-    label: 'Funil',
-    icon: '🎯'
+    label: 'Funil'
   }, {
     k: 'contatos',
-    label: 'Contatos',
-    icon: '👥'
+    label: 'Contatos'
   }, {
     k: 'atividades',
-    label: 'Atividades',
-    icon: '✅'
+    label: 'Atividades'
   }, {
     k: 'dashboard',
-    label: 'Dashboard',
-    icon: '📊'
+    label: 'Dashboard'
   }, {
     k: 'entrada',
-    label: 'Entrada de Leads',
-    icon: '📥'
+    label: 'Entrada'
   }];
   return /*#__PURE__*/React.createElement("nav", {
-    className: "bg-white border-b border-slate-200 sticky top-16 z-30"
+    className: "bg-white/90 backdrop-blur border-b border-[#ececef] sticky top-16 z-30"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "max-w-[1400px] mx-auto px-2 sm:px-5 flex gap-1 overflow-x-auto no-scrollbar"
-  }, tabs.map(t => /*#__PURE__*/React.createElement("button", {
-    key: t.k,
-    onClick: () => setView(t.k),
-    className: "whitespace-nowrap px-3 sm:px-4 py-3 text-sm font-semibold border-b-2 transition " + (view === t.k ? "border-[#E85D1A] text-[#E85D1A]" : "border-transparent text-slate-500 hover:text-slate-800")
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "mr-1.5"
-  }, t.icon), t.label))));
+    className: "max-w-[1400px] mx-auto px-2 sm:px-5 flex gap-0.5 sm:gap-1 overflow-x-auto no-scrollbar"
+  }, tabs.map(t => {
+    const on = view === t.k;
+    return /*#__PURE__*/React.createElement("button", {
+      key: t.k,
+      onClick: () => setView(t.k),
+      className: "group relative whitespace-nowrap flex items-center gap-1.5 px-3 sm:px-3.5 py-3.5 text-sm font-semibold transition " + (on ? "text-[#0A1F4B]" : "text-slate-400 hover:text-slate-700")
+    }, /*#__PURE__*/React.createElement("span", {
+      className: on ? "text-[#E85D1A]" : "text-slate-300 group-hover:text-slate-400"
+    }, /*#__PURE__*/React.createElement(Icon, {
+      name: t.k,
+      size: 17
+    })), t.label, /*#__PURE__*/React.createElement("span", {
+      className: "absolute left-2 right-2 -bottom-px h-0.5 rounded-full transition " + (on ? "bg-[#E85D1A]" : "bg-transparent")
+    }));
+  })));
 }
 
 /* ============================= Filtros ============================= */
@@ -943,11 +991,11 @@ function FilterBar({
     value: search,
     onChange: e => setSearch(e.target.value),
     placeholder: "Buscar por nome, contato ou telefone…",
-    className: "w-full border border-slate-200 rounded-lg pl-9 pr-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#E85D1A]/30"
+    className: "w-full border border-[#ececef] rounded-lg pl-9 pr-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#E85D1A]/30"
   })), /*#__PURE__*/React.createElement("select", {
     value: fOwner,
     onChange: e => setFOwner(e.target.value),
-    className: "border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
+    className: "border border-[#ececef] rounded-lg px-3 py-2 text-sm bg-white"
   }, /*#__PURE__*/React.createElement("option", {
     value: "all"
   }, "Todos os donos"), USERS.map(u => /*#__PURE__*/React.createElement("option", {
@@ -958,7 +1006,7 @@ function FilterBar({
   }, "Sem dono")), /*#__PURE__*/React.createElement("select", {
     value: fSource,
     onChange: e => setFSource(e.target.value),
-    className: "border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
+    className: "border border-[#ececef] rounded-lg px-3 py-2 text-sm bg-white"
   }, /*#__PURE__*/React.createElement("option", {
     value: "all"
   }, "Todas as origens"), Object.entries(SOURCES).map(([k, s]) => /*#__PURE__*/React.createElement("option", {
@@ -967,18 +1015,23 @@ function FilterBar({
   }, s.icon, " ", s.label))));
 }
 
-/* ============================= Funil (Kanban) ============================= */
+/* ============================= Funil (responsivo) ============================= */
 function Funil(props) {
-  const {
-    leads,
-    onMove,
-    onOpen
-  } = props;
+  const isMobile = useIsMobile();
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(FilterBar, props), isMobile ? /*#__PURE__*/React.createElement(FunilMobile, props) : /*#__PURE__*/React.createElement(FunilKanban, props));
+}
+
+/* --- Desktop: Kanban --- */
+function FunilKanban({
+  leads,
+  onMove,
+  onOpen
+}) {
   const [dragId, setDragId] = useState(null);
   const byStage = k => leads.filter(l => l.stage === k).sort((a, b) => b.updatedAt - a.updatedAt);
   const columns = leads.some(l => l.stage === 'perdido') ? [...STAGES, LOST] : STAGES;
-  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(FilterBar, props), /*#__PURE__*/React.createElement("div", {
-    className: "flex gap-3 overflow-x-auto no-scrollbar kanban-scroll pb-3"
+  return /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-3 overflow-x-auto no-scrollbar kanban-scroll pb-3 -mx-1 px-1"
   }, columns.map(col => {
     const items = byStage(col.key);
     const sum = items.reduce((s, l) => s + (l.value || 0), 0);
@@ -995,13 +1048,13 @@ function Funil(props) {
         if (dragId) onMove(dragId, col.key);
         setDragId(null);
       },
-      className: "shrink-0 w-[270px] bg-slate-100/70 rounded-xl p-2 flex flex-col",
+      className: "shrink-0 w-[272px] bg-[#f0f1f4] rounded-2xl p-2.5 flex flex-col",
       style: {
         scrollSnapAlign: 'start',
-        minHeight: '60vh'
+        minHeight: '62vh'
       }
     }, /*#__PURE__*/React.createElement("div", {
-      className: "flex items-center justify-between px-1.5 py-1.5 mb-1"
+      className: "flex items-center justify-between px-1.5 pt-1 pb-2.5"
     }, /*#__PURE__*/React.createElement("div", {
       className: "flex items-center gap-2"
     }, /*#__PURE__*/React.createElement("span", {
@@ -1010,65 +1063,116 @@ function Funil(props) {
         background: col.color
       }
     }), /*#__PURE__*/React.createElement("span", {
-      className: "text-sm font-bold text-slate-700"
+      className: "text-[13px] font-bold text-slate-700"
     }, col.label), /*#__PURE__*/React.createElement("span", {
-      className: "text-xs text-slate-400 font-semibold"
-    }, items.length))), sum > 0 && /*#__PURE__*/React.createElement("p", {
-      className: "px-1.5 mb-2 text-[11px] font-semibold text-slate-400"
-    }, fmtBRL(sum)), /*#__PURE__*/React.createElement("div", {
+      className: "text-[11px] text-slate-400 font-bold bg-white rounded-full px-1.5 py-0.5"
+    }, items.length)), sum > 0 && /*#__PURE__*/React.createElement("span", {
+      className: "text-[11px] font-semibold text-slate-400"
+    }, fmtBRL(sum))), /*#__PURE__*/React.createElement("div", {
       className: "flex flex-col gap-2 overflow-y-auto no-scrollbar flex-1"
-    }, items.map(l => /*#__PURE__*/React.createElement(KanbanCard, {
+    }, items.map(l => /*#__PURE__*/React.createElement(LeadCard, {
       key: l.id,
       lead: l,
       onOpen: onOpen,
+      draggable: true,
       onDragStart: () => setDragId(l.id),
       onDragEnd: () => setDragId(null),
       dragging: dragId === l.id
     })), !items.length && /*#__PURE__*/React.createElement("p", {
-      className: "text-center text-xs text-slate-300 py-6"
+      className: "text-center text-xs text-slate-300 py-8"
     }, "— vazio —")));
-  })));
+  }));
 }
-function KanbanCard({
+
+/* --- Mobile: lista agrupada por etapa --- */
+function FunilMobile({
+  leads,
+  onOpen
+}) {
+  const stages = leads.some(l => l.stage === 'perdido') ? [...STAGES, LOST] : STAGES;
+  return /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-5"
+  }, stages.map(col => {
+    const items = leads.filter(l => l.stage === col.key).sort((a, b) => b.updatedAt - a.updatedAt);
+    if (!items.length) return null;
+    const sum = items.reduce((s, l) => s + (l.value || 0), 0);
+    return /*#__PURE__*/React.createElement("div", {
+      key: col.key
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-2 mb-2 px-1"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "w-2.5 h-2.5 rounded-full",
+      style: {
+        background: col.color
+      }
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "text-sm font-bold text-slate-700"
+    }, col.label), /*#__PURE__*/React.createElement("span", {
+      className: "text-[11px] text-slate-400 font-bold bg-slate-100 rounded-full px-1.5 py-0.5"
+    }, items.length), sum > 0 && /*#__PURE__*/React.createElement("span", {
+      className: "ml-auto text-[11px] font-semibold text-slate-400"
+    }, fmtBRL(sum))), /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-col gap-2"
+    }, items.map(l => /*#__PURE__*/React.createElement(LeadCard, {
+      key: l.id,
+      lead: l,
+      onOpen: onOpen,
+      wide: true
+    }))));
+  }), !leads.length && /*#__PURE__*/React.createElement("p", {
+    className: "text-center text-sm text-slate-400 py-12"
+  }, "Nenhum lead encontrado."));
+}
+
+/* --- Card de lead (kanban e lista) --- */
+function LeadCard({
   lead,
   onOpen,
+  draggable,
   onDragStart,
   onDragEnd,
-  dragging
+  dragging,
+  wide
 }) {
   const pend = arr(lead.tasks).filter(t => !t.done);
   const overdue = pend.some(t => t.due && t.due < now());
   const pr = PRIORITIES[lead.priority];
   return /*#__PURE__*/React.createElement("div", {
-    draggable: true,
+    draggable: draggable,
     onDragStart: onDragStart,
     onDragEnd: onDragEnd,
     onClick: () => onOpen(lead.id),
-    className: "bg-white rounded-lg border border-slate-200 p-3 cursor-pointer hover:shadow-md hover:border-slate-300 transition " + (dragging ? 'card-dragging' : '')
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-start justify-between gap-2 mb-1.5"
-  }, /*#__PURE__*/React.createElement("p", {
-    className: "text-sm font-semibold text-slate-800 leading-tight line-clamp-2"
-  }, lead.name), /*#__PURE__*/React.createElement("span", {
-    className: "w-2 h-2 rounded-full shrink-0 mt-1",
+    className: "card lift cursor-pointer relative overflow-hidden " + (wide ? 'p-3.5' : 'p-3') + (dragging ? ' card-dragging' : '')
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "absolute left-0 top-0 bottom-0 w-1",
     style: {
       background: pr.color
-    },
-    title: 'Prioridade ' + pr.label
-  })), lead.value > 0 && /*#__PURE__*/React.createElement("p", {
-    className: "text-sm font-bold text-[#0A1F4B] mb-1.5"
-  }, fmtBRL(lead.value)), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center justify-between"
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "pl-1.5"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-start justify-between gap-2"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "font-semibold text-slate-800 leading-tight " + (wide ? 'text-[15px]' : 'text-sm line-clamp-2')
+  }, lead.name), lead.value > 0 && /*#__PURE__*/React.createElement("p", {
+    className: "text-sm font-bold text-[#0A1F4B] shrink-0 whitespace-nowrap"
+  }, fmtBRL(lead.value))), wide && lead.phone && /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-400 mt-0.5"
+  }, lead.phone), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between mt-2.5"
   }, /*#__PURE__*/React.createElement(SourceBadge, {
     source: lead.source
   }), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-1.5"
+    className: "flex items-center gap-2"
   }, pend.length > 0 && /*#__PURE__*/React.createElement("span", {
-    className: "text-[11px] font-semibold " + (overdue ? 'text-red-500' : 'text-slate-400')
-  }, "✅ ", pend.length), lead.owner && /*#__PURE__*/React.createElement(Avatar, {
+    className: "inline-flex items-center gap-1 text-[11px] font-bold " + (overdue ? 'text-red-500' : 'text-slate-400')
+  }, /*#__PURE__*/React.createElement(Icon, {
+    name: "atividades",
+    size: 13
+  }), pend.length), lead.owner && /*#__PURE__*/React.createElement(Avatar, {
     name: lead.owner,
     size: 22
-  }))));
+  })))));
 }
 
 /* ============================= Contatos (tabela) ============================= */
@@ -1079,7 +1183,7 @@ function Contatos(props) {
   } = props;
   const rows = [...leads].sort((a, b) => b.updatedAt - a.updatedAt);
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(FilterBar, props), /*#__PURE__*/React.createElement("div", {
-    className: "bg-white rounded-xl border border-slate-200 overflow-hidden"
+    className: "bg-white rounded-xl border border-[#ececef] overflow-hidden"
   }, /*#__PURE__*/React.createElement("div", {
     className: "overflow-x-auto no-scrollbar"
   }, /*#__PURE__*/React.createElement("table", {
@@ -1175,7 +1279,7 @@ function Atividades({
   }, overdue.length, " atrasada(s)"))), /*#__PURE__*/React.createElement("select", {
     value: filter,
     onChange: e => setFilter(e.target.value),
-    className: "border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
+    className: "border border-[#ececef] rounded-lg px-3 py-2 text-sm bg-white"
   }, /*#__PURE__*/React.createElement("option", {
     value: "all"
   }, "Todos"), USERS.map(u => /*#__PURE__*/React.createElement("option", {
@@ -1189,7 +1293,7 @@ function Atividades({
     const late = t.due && t.due < now();
     return /*#__PURE__*/React.createElement("div", {
       key: t.id,
-      className: "bg-white rounded-lg border border-slate-200 p-3 flex items-center gap-3"
+      className: "bg-white rounded-lg border border-[#ececef] p-3 flex items-center gap-3"
     }, /*#__PURE__*/React.createElement("button", {
       onClick: () => onToggle(t.lead.id, t.id),
       className: "w-5 h-5 rounded border-2 border-slate-300 hover:border-[#E85D1A] shrink-0"
@@ -1207,7 +1311,7 @@ function Atividades({
       size: 24
     }));
   }), !list.length && /*#__PURE__*/React.createElement("div", {
-    className: "text-center text-slate-400 py-12 bg-white rounded-xl border border-slate-200"
+    className: "text-center text-slate-400 py-12 bg-white rounded-xl border border-[#ececef]"
   }, "🎉 Nenhuma tarefa pendente!")));
 }
 
@@ -1238,7 +1342,7 @@ function Dashboard({
     sub,
     color
   }) => /*#__PURE__*/React.createElement("div", {
-    className: "bg-white rounded-xl border border-slate-200 p-4"
+    className: "bg-white rounded-xl border border-[#ececef] p-4"
   }, /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-slate-400 uppercase tracking-wide font-semibold"
   }, label), /*#__PURE__*/React.createElement("p", {
@@ -1276,7 +1380,7 @@ function Dashboard({
   })), /*#__PURE__*/React.createElement("div", {
     className: "grid grid-cols-1 lg:grid-cols-2 gap-5"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "bg-white rounded-xl border border-slate-200 p-5"
+    className: "bg-white rounded-xl border border-[#ececef] p-5"
   }, /*#__PURE__*/React.createElement("h3", {
     className: "text-sm font-bold text-slate-700 mb-4"
   }, "Leads por etapa"), /*#__PURE__*/React.createElement("div", {
@@ -1295,7 +1399,7 @@ function Dashboard({
       background: s.color
     }
   }, s.n || '')))))), /*#__PURE__*/React.createElement("div", {
-    className: "bg-white rounded-xl border border-slate-200 p-5"
+    className: "bg-white rounded-xl border border-[#ececef] p-5"
   }, /*#__PURE__*/React.createElement("h3", {
     className: "text-sm font-bold text-slate-700 mb-4"
   }, "Origem dos leads"), /*#__PURE__*/React.createElement("div", {
@@ -1316,7 +1420,7 @@ function Dashboard({
   }, s.n)))), !bySource.length && /*#__PURE__*/React.createElement("p", {
     className: "text-sm text-slate-400"
   }, "Sem dados ainda.")))), /*#__PURE__*/React.createElement("div", {
-    className: "bg-white rounded-xl border border-slate-200 p-5"
+    className: "bg-white rounded-xl border border-[#ececef] p-5"
   }, /*#__PURE__*/React.createElement("h3", {
     className: "text-sm font-bold text-slate-700 mb-4"
   }, "Desempenho por vendedor"), /*#__PURE__*/React.createElement("div", {
@@ -1389,7 +1493,7 @@ function Entrada({
   return /*#__PURE__*/React.createElement("div", {
     className: "grid grid-cols-1 lg:grid-cols-2 gap-5"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "bg-white rounded-xl border border-slate-200 p-5"
+    className: "bg-white rounded-xl border border-[#ececef] p-5"
   }, /*#__PURE__*/React.createElement("h3", {
     className: "text-base font-bold text-slate-800 mb-1"
   }, "➕ Cadastro rápido"), /*#__PURE__*/React.createElement("p", {
@@ -1404,7 +1508,7 @@ function Entrada({
       name: e.target.value
     }),
     placeholder: "Nome da empresa / cliente",
-    className: "border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E85D1A]/30"
+    className: "border border-[#ececef] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E85D1A]/30"
   }), /*#__PURE__*/React.createElement("input", {
     value: f.phone,
     onChange: e => setF({
@@ -1412,7 +1516,7 @@ function Entrada({
       phone: e.target.value
     }),
     placeholder: "Telefone / WhatsApp",
-    className: "border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E85D1A]/30"
+    className: "border border-[#ececef] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E85D1A]/30"
   }), /*#__PURE__*/React.createElement("div", {
     className: "grid grid-cols-2 gap-3"
   }, /*#__PURE__*/React.createElement("select", {
@@ -1421,7 +1525,7 @@ function Entrada({
       ...f,
       source: e.target.value
     }),
-    className: "border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
+    className: "border border-[#ececef] rounded-lg px-3 py-2 text-sm bg-white"
   }, Object.entries(SOURCES).map(([k, s]) => /*#__PURE__*/React.createElement("option", {
     key: k,
     value: k
@@ -1431,7 +1535,7 @@ function Entrada({
       ...f,
       owner: e.target.value
     }),
-    className: "border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
+    className: "border border-[#ececef] rounded-lg px-3 py-2 text-sm bg-white"
   }, /*#__PURE__*/React.createElement("option", {
     value: ""
   }, "Sem dono"), USERS.map(u => /*#__PURE__*/React.createElement("option", {
@@ -1452,12 +1556,12 @@ function Entrada({
     onChange: e => setCsv(e.target.value),
     rows: "4",
     placeholder: "ATHOS CONSTRUCOES, (85) 3289-3612\nDIRECIONAL, (31) 3431-5686, contato@dir.com",
-    className: "w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#E85D1A]/30"
+    className: "w-full border border-[#ececef] rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#E85D1A]/30"
   }), /*#__PURE__*/React.createElement("button", {
     onClick: doImport,
     className: "mt-2 bg-slate-800 hover:bg-slate-900 text-white text-sm font-semibold px-4 py-2 rounded-lg transition"
   }, "Importar"))), /*#__PURE__*/React.createElement("div", {
-    className: "bg-white rounded-xl border border-slate-200 p-5"
+    className: "bg-white rounded-xl border border-[#ececef] p-5"
   }, /*#__PURE__*/React.createElement("h3", {
     className: "text-base font-bold text-slate-800 mb-1"
   }, "🔌 Integração automática"), /*#__PURE__*/React.createElement("p", {
@@ -1474,7 +1578,7 @@ function Entrada({
   }, copied ? '✓' : 'Copiar')), /*#__PURE__*/React.createElement("label", {
     className: "text-xs font-semibold text-slate-500 uppercase"
   }, "Corpo (JSON)"), /*#__PURE__*/React.createElement("pre", {
-    className: "bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-700 mt-1 overflow-x-auto no-scrollbar"
+    className: "bg-slate-50 border border-[#ececef] rounded-lg p-3 text-xs text-slate-700 mt-1 overflow-x-auto no-scrollbar"
   }, payload), /*#__PURE__*/React.createElement("div", {
     className: "mt-4 text-xs text-slate-500 space-y-1.5"
   }, /*#__PURE__*/React.createElement("p", null, "💬 ", /*#__PURE__*/React.createElement("b", null, "WhatsApp"), " — use a API oficial (Meta) ou um bot (ex.: Z-API, Twilio) e mande um POST a cada nova conversa."), /*#__PURE__*/React.createElement("p", null, "📸 ", /*#__PURE__*/React.createElement("b", null, "Instagram / Facebook Lead Ads"), " — no Make/Zapier, gatilho \"Novo Lead\" → ação \"HTTP POST\" para o endpoint acima."), /*#__PURE__*/React.createElement("p", null, "🌐 ", /*#__PURE__*/React.createElement("b", null, "Site / Landing"), " — o formulário \"Peça um orçamento\" envia o POST direto."), /*#__PURE__*/React.createElement("p", {
@@ -1505,7 +1609,7 @@ function AddLeadModal({
     onCreate(f);
     onClose();
   };
-  const inp = "border border-slate-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-[#E85D1A]/30";
+  const inp = "border border-[#ececef] rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-[#E85D1A]/30";
   return /*#__PURE__*/React.createElement("div", {
     className: "fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 fade-in",
     onClick: onClose
@@ -1620,7 +1724,7 @@ function AddLeadModal({
   }, /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: onClose,
-    className: "flex-1 border border-slate-200 rounded-lg py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+    className: "flex-1 border border-[#ececef] rounded-lg py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
   }, "Cancelar"), /*#__PURE__*/React.createElement("button", {
     className: "flex-1 bg-[#E85D1A] hover:bg-[#d24e10] text-white rounded-lg py-2.5 text-sm font-semibold"
   }, "Criar lead")))));
@@ -1700,7 +1804,7 @@ function LeadDrawer({
     setTaskTitle('');
     setTaskDue('');
   };
-  const inp = "border border-slate-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-[#E85D1A]/30";
+  const inp = "border border-[#ececef] rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-[#E85D1A]/30";
   return /*#__PURE__*/React.createElement("div", {
     className: "fixed inset-0 z-50 flex justify-end"
   }, /*#__PURE__*/React.createElement("div", {
@@ -1709,7 +1813,7 @@ function LeadDrawer({
   }), /*#__PURE__*/React.createElement("div", {
     className: "relative w-full sm:max-w-md bg-slate-50 h-full overflow-y-auto no-scrollbar drawer-in shadow-2xl"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "bg-white border-b border-slate-200 p-4 sticky top-0 z-10"
+    className: "bg-white border-b border-[#ececef] p-4 sticky top-0 z-10"
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-start justify-between gap-2 mb-3"
   }, /*#__PURE__*/React.createElement("div", {
@@ -1756,7 +1860,7 @@ function LeadDrawer({
   }, STAGES.map(s => /*#__PURE__*/React.createElement("button", {
     key: s.key,
     onClick: () => onMove(lead.id, s.key),
-    className: "text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition " + (lead.stage === s.key ? 'text-white border-transparent' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'),
+    className: "text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition " + (lead.stage === s.key ? 'text-white border-transparent' : 'bg-white text-slate-600 border-[#ececef] hover:border-slate-300'),
     style: lead.stage === s.key ? {
       background: s.color
     } : {}
@@ -1765,7 +1869,7 @@ function LeadDrawer({
   }, "⛔ Perdido", lead.lostReason ? ': ' + lead.lostReason : '')), /*#__PURE__*/React.createElement("div", {
     className: "px-4 pb-4"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "bg-white rounded-xl border border-slate-200 p-4"
+    className: "bg-white rounded-xl border border-[#ececef] p-4"
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between mb-3"
   }, /*#__PURE__*/React.createElement("h4", {
@@ -1889,7 +1993,7 @@ function LeadDrawer({
     className: "flex flex-col gap-2"
   }, arr(lead.notes).slice().reverse().map(n => /*#__PURE__*/React.createElement("div", {
     key: n.id,
-    className: "bg-white rounded-lg border border-slate-200 p-3"
+    className: "bg-white rounded-lg border border-[#ececef] p-3"
   }, /*#__PURE__*/React.createElement("p", {
     className: "text-sm text-slate-700 whitespace-pre-wrap"
   }, n.text), /*#__PURE__*/React.createElement("p", {
@@ -1922,7 +2026,7 @@ function LeadDrawer({
     const late = t.due && t.due < now() && !t.done;
     return /*#__PURE__*/React.createElement("div", {
       key: t.id,
-      className: "bg-white rounded-lg border border-slate-200 p-3 flex items-center gap-2.5"
+      className: "bg-white rounded-lg border border-[#ececef] p-3 flex items-center gap-2.5"
     }, /*#__PURE__*/React.createElement("button", {
       onClick: () => onToggleTask(lead.id, t.id),
       className: "w-5 h-5 rounded border-2 shrink-0 flex items-center justify-center " + (t.done ? 'bg-green-500 border-green-500 text-white text-xs' : 'border-slate-300 hover:border-[#E85D1A]')
@@ -1954,7 +2058,7 @@ function LeadDrawer({
   }, ev.user || 'Sistema', " · ", fmtDateTime(ev.ts)))), !timeline.length && /*#__PURE__*/React.createElement("p", {
     className: "text-sm text-slate-300 py-4"
   }, "Sem histórico."))), /*#__PURE__*/React.createElement("div", {
-    className: "p-4 border-t border-slate-200 flex gap-2"
+    className: "p-4 border-t border-[#ececef] flex gap-2"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => onMove(lead.id, 'ganho'),
     className: "flex-1 bg-green-500 hover:bg-green-600 text-white text-sm font-semibold py-2.5 rounded-lg"
@@ -1968,7 +2072,7 @@ function LeadDrawer({
     onClick: () => {
       if (confirm('Excluir este lead? Não dá pra desfazer.')) onDelete(lead.id);
     },
-    className: "px-3 border border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-200 rounded-lg"
+    className: "px-3 border border-[#ececef] text-slate-400 hover:text-red-500 hover:border-red-200 rounded-lg"
   }, "🗑️"))));
 }
 function Row({
