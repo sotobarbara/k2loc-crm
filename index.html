@@ -168,6 +168,151 @@ const PRIORITIES = {
   }
 };
 
+/* Base da empresa (K2 LOC) — trocar pelo endereco/coords exatos da sede */
+const BASE = {
+  label: 'K2 LOC — Fortaleza/CE',
+  lat: -3.7319,
+  lng: -38.5267
+};
+/* Distancias de referencia a partir da base (km): perto / medio / longe */
+const DIST_NEAR = 70,
+  DIST_MID = 350;
+/* Cidade aproximada por DDD (pra estimar distancia sem endereco) */
+const DDD_CITY = {
+  '85': {
+    c: 'Fortaleza',
+    uf: 'CE',
+    lat: -3.7319,
+    lng: -38.5267
+  },
+  '88': {
+    c: 'Interior',
+    uf: 'CE',
+    lat: -3.6880,
+    lng: -40.3497
+  },
+  '86': {
+    c: 'Teresina',
+    uf: 'PI',
+    lat: -5.0892,
+    lng: -42.8016
+  },
+  '89': {
+    c: 'Interior',
+    uf: 'PI',
+    lat: -7.0764,
+    lng: -41.4675
+  },
+  '84': {
+    c: 'Natal',
+    uf: 'RN',
+    lat: -5.7945,
+    lng: -35.2110
+  },
+  '83': {
+    c: 'João Pessoa',
+    uf: 'PB',
+    lat: -7.1195,
+    lng: -34.8450
+  },
+  '81': {
+    c: 'Recife',
+    uf: 'PE',
+    lat: -8.0476,
+    lng: -34.8770
+  },
+  '87': {
+    c: 'Interior',
+    uf: 'PE',
+    lat: -8.2833,
+    lng: -38.2500
+  },
+  '82': {
+    c: 'Maceió',
+    uf: 'AL',
+    lat: -9.6498,
+    lng: -35.7089
+  },
+  '79': {
+    c: 'Aracaju',
+    uf: 'SE',
+    lat: -10.9472,
+    lng: -37.0731
+  },
+  '71': {
+    c: 'Salvador',
+    uf: 'BA',
+    lat: -12.9714,
+    lng: -38.5014
+  },
+  '73': {
+    c: 'Itabuna',
+    uf: 'BA',
+    lat: -14.7935,
+    lng: -39.2800
+  },
+  '98': {
+    c: 'São Luís',
+    uf: 'MA',
+    lat: -2.5307,
+    lng: -44.3068
+  },
+  '99': {
+    c: 'Imperatriz',
+    uf: 'MA',
+    lat: -5.5264,
+    lng: -47.4917
+  },
+  '31': {
+    c: 'Belo Horizonte',
+    uf: 'MG',
+    lat: -19.9167,
+    lng: -43.9345
+  },
+  '11': {
+    c: 'São Paulo',
+    uf: 'SP',
+    lat: -23.5505,
+    lng: -46.6333
+  },
+  '21': {
+    c: 'Rio de Janeiro',
+    uf: 'RJ',
+    lat: -22.9068,
+    lng: -43.1729
+  },
+  '27': {
+    c: 'Vitória',
+    uf: 'ES',
+    lat: -20.3155,
+    lng: -40.3128
+  },
+  '61': {
+    c: 'Brasília',
+    uf: 'DF',
+    lat: -15.7939,
+    lng: -47.8828
+  },
+  '62': {
+    c: 'Goiânia',
+    uf: 'GO',
+    lat: -16.6869,
+    lng: -49.2648
+  },
+  '41': {
+    c: 'Curitiba',
+    uf: 'PR',
+    lat: -25.4284,
+    lng: -49.2733
+  },
+  '51': {
+    c: 'Porto Alegre',
+    uf: 'RS',
+    lat: -30.0346,
+    lng: -51.2177
+  }
+};
+
 /* ============================= Helpers ============================= */
 const genId = () => 'x' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const now = () => Date.now();
@@ -196,6 +341,64 @@ const timeAgo = ts => {
   if (s < 604800) return Math.floor(s / 86400) + ' d';
   return fmtDate(ts);
 };
+
+/* ================ Distância ================ */
+const haversine = (a, b) => {
+  const R = 6371,
+    toR = x => x * Math.PI / 180;
+  const dLat = toR(b.lat - a.lat),
+    dLng = toR(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toR(a.lat)) * Math.cos(toR(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return Math.round(2 * R * Math.asin(Math.min(1, Math.sqrt(h))));
+};
+const dddOf = phone => digits(phone).slice(0, 2);
+// Coordenada do lead: precisa (endereço geolocalizado) ou aproximada (DDD)
+const leadGeo = lead => {
+  if (lead.lat && lead.lng) return {
+    lat: lead.lat,
+    lng: lead.lng,
+    approx: false
+  };
+  const c = DDD_CITY[dddOf(lead.phone)];
+  if (c) return {
+    lat: c.lat,
+    lng: c.lng,
+    approx: true,
+    city: c.c + '/' + c.uf
+  };
+  return null;
+};
+// Distância em km da base; null se não dá pra estimar
+const leadDist = lead => {
+  const g = leadGeo(lead);
+  if (!g) return null;
+  return {
+    km: haversine(BASE, g),
+    approx: g.approx,
+    city: g.city
+  };
+};
+const distColor = km => km <= DIST_NEAR ? '#22C55E' : km <= DIST_MID ? '#EAB308' : '#EF4444';
+const routeLink = lead => {
+  const dest = lead.lat && lead.lng ? lead.lat + ',' + lead.lng : encodeURIComponent((lead.address || lead.name) + ', ' + (DDD_CITY[dddOf(lead.phone)] ? DDD_CITY[dddOf(lead.phone)].c : '') + ', Brasil');
+  return 'https://www.google.com/maps/dir/?api=1&origin=' + BASE.lat + ',' + BASE.lng + '&destination=' + dest;
+};
+// Geocodifica um endereço (OpenStreetMap Nominatim) — melhor esforço, roda no navegador
+async function geocode(address, hint) {
+  if (typeof fetch !== 'function' || !address) return null;
+  const q = encodeURIComponent(address + (hint ? ', ' + hint : '') + ', Brasil');
+  const res = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + q, {
+    headers: {
+      'Accept': 'application/json'
+    }
+  });
+  const data = await res.json();
+  if (data && data[0]) return {
+    lat: parseFloat(data[0].lat),
+    lng: parseFloat(data[0].lon)
+  };
+  return null;
+}
 
 /* ================ Dados iniciais (42 prospects K2LOC) ================ */
 const PROSPECTS_DATA = [{
@@ -447,6 +650,9 @@ function normalize(raw) {
       contact: v.contact || '',
       phone: v.phone || '',
       email: v.email || '',
+      address: v.address || '',
+      lat: v.lat != null && !isNaN(v.lat) ? Number(v.lat) : null,
+      lng: v.lng != null && !isNaN(v.lng) ? Number(v.lng) : null,
       source: SOURCES[v.source] ? v.source : 'site',
       stage: ALL_STAGES.some(s => s.key === v.stage) ? v.stage : 'novo',
       value: Number(v.value) || 0,
@@ -513,6 +719,23 @@ function SourceBadge({
     color: s.color,
     subtle: true
   }, s.icon, " ", s.label);
+}
+function DistanceBadge({
+  lead,
+  showCity
+}) {
+  const d = leadDist(lead);
+  if (!d) return null;
+  const label = d.km <= 1 ? 'Local' : '~' + d.km + ' km';
+  const city = showCity && d.city ? ' · ' + d.city : '';
+  return /*#__PURE__*/React.createElement("span", {
+    className: "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold",
+    style: {
+      background: distColor(d.km) + '1a',
+      color: distColor(d.km)
+    },
+    title: d.approx ? 'Distância aproximada pelo DDD — cadastre o endereço para precisão' : 'Distância pelo endereço cadastrado'
+  }, "📍 ", label, city, d.approx ? '*' : '');
 }
 function Avatar({
   name,
@@ -617,12 +840,28 @@ function App() {
       });
     }
   };
+  const geocodeLead = async (id, address, phone) => {
+    if (!address) return;
+    try {
+      const c = DDD_CITY[dddOf(phone)];
+      const g = await geocode(address, c ? c.c + ', ' + c.uf : '');
+      if (g) writeLead(id, {
+        lat: g.lat,
+        lng: g.lng
+      });
+    } catch (e) {
+      console.warn('Geocode falhou:', e);
+    }
+  };
   const createLead = async data => {
     const base = {
       name: data.name?.trim() || 'Sem nome',
       contact: data.contact?.trim() || '',
       phone: data.phone?.trim() || '',
       email: data.email?.trim() || '',
+      address: data.address?.trim() || '',
+      lat: data.lat || null,
+      lng: data.lng || null,
       source: data.source || 'manual',
       stage: 'novo',
       value: Number(data.value) || 0,
@@ -638,14 +877,16 @@ function App() {
       createdAt: now(),
       updatedAt: now()
     };
+    let id;
     if (db) {
       const r = db.ref('/leads').push();
+      id = r.key;
       await r.update({
         ...base,
-        id: r.key
+        id
       });
     } else {
-      const id = genId();
+      id = genId();
       setLeads(prev => {
         const u = {
           ...prev,
@@ -659,6 +900,8 @@ function App() {
       });
     }
     notify('✅ Lead adicionado ao funil');
+    if (base.address && !base.lat) geocodeLead(id, base.address, base.phone);
+    return id;
   };
   const importLeads = async list => {
     for (const d of list) {
@@ -841,7 +1084,8 @@ function App() {
     onAddTask: addTask,
     onToggleTask: toggleTask,
     onMarkLost: markLost,
-    onDelete: deleteLead
+    onDelete: deleteLead,
+    onGeocode: geocodeLead
   }), showAdd && /*#__PURE__*/React.createElement(AddLeadModal, {
     onClose: () => setShowAdd(false),
     onCreate: createLead
@@ -1159,11 +1403,14 @@ function LeadCard({
   }, fmtBRL(lead.value))), wide && lead.phone && /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-slate-400 mt-0.5"
   }, lead.phone), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center justify-between mt-2.5"
+    className: "flex items-center gap-1.5 flex-wrap mt-2.5"
   }, /*#__PURE__*/React.createElement(SourceBadge, {
     source: lead.source
+  }), /*#__PURE__*/React.createElement(DistanceBadge, {
+    lead: lead,
+    showCity: wide
   }), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-2"
+    className: "flex items-center gap-2 ml-auto"
   }, pend.length > 0 && /*#__PURE__*/React.createElement("span", {
     className: "inline-flex items-center gap-1 text-[11px] font-bold " + (overdue ? 'text-red-500' : 'text-slate-400')
   }, /*#__PURE__*/React.createElement(Icon, {
@@ -1181,52 +1428,89 @@ function Contatos(props) {
     leads,
     onOpen
   } = props;
-  const rows = [...leads].sort((a, b) => b.updatedAt - a.updatedAt);
+  const [sort, setSort] = useState('recent');
+  const rows = useMemo(() => {
+    const arr2 = [...leads];
+    if (sort === 'dist') {
+      return arr2.sort((a, b) => {
+        const da = leadDist(a),
+          db2 = leadDist(b);
+        return (da ? da.km : 9e9) - (db2 ? db2.km : 9e9);
+      });
+    }
+    return arr2.sort((a, b) => b.updatedAt - a.updatedAt);
+  }, [leads, sort]);
+  const SortBtn = ({
+    v,
+    children
+  }) => /*#__PURE__*/React.createElement("button", {
+    onClick: () => setSort(v),
+    className: "px-3 py-1.5 text-xs font-semibold rounded-lg transition " + (sort === v ? 'bg-white text-[#0A1F4B] soft-shadow' : 'text-slate-500')
+  }, children);
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(FilterBar, props), /*#__PURE__*/React.createElement("div", {
-    className: "bg-white rounded-xl border border-[#ececef] overflow-hidden"
+    className: "flex items-center gap-2 mb-3"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-xs font-semibold text-slate-400"
+  }, "Ordenar:"), /*#__PURE__*/React.createElement("div", {
+    className: "inline-flex bg-slate-100 rounded-lg p-0.5"
+  }, /*#__PURE__*/React.createElement(SortBtn, {
+    v: "recent"
+  }, "Recentes"), /*#__PURE__*/React.createElement(SortBtn, {
+    v: "dist"
+  }, "📍 Mais perto"))), /*#__PURE__*/React.createElement("div", {
+    className: "card overflow-hidden"
   }, /*#__PURE__*/React.createElement("div", {
     className: "overflow-x-auto no-scrollbar"
   }, /*#__PURE__*/React.createElement("table", {
     className: "w-full text-sm"
   }, /*#__PURE__*/React.createElement("thead", {
-    className: "bg-slate-50 text-slate-500 text-xs uppercase tracking-wide"
+    className: "bg-slate-50/70 text-slate-400 text-[11px] uppercase tracking-wide"
   }, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
     className: "text-left font-semibold px-4 py-3"
   }, "Lead"), /*#__PURE__*/React.createElement("th", {
     className: "text-left font-semibold px-4 py-3 hidden sm:table-cell"
+  }, "Distância"), /*#__PURE__*/React.createElement("th", {
+    className: "text-left font-semibold px-4 py-3 hidden md:table-cell"
   }, "Etapa"), /*#__PURE__*/React.createElement("th", {
-    className: "text-left font-semibold px-4 py-3 hidden md:table-cell"
+    className: "text-left font-semibold px-4 py-3 hidden lg:table-cell"
   }, "Origem"), /*#__PURE__*/React.createElement("th", {
-    className: "text-right font-semibold px-4 py-3 hidden lg:table-cell"
-  }, "Valor"), /*#__PURE__*/React.createElement("th", {
-    className: "text-left font-semibold px-4 py-3 hidden md:table-cell"
+    className: "text-left font-semibold px-4 py-3 hidden lg:table-cell"
   }, "Dono"), /*#__PURE__*/React.createElement("th", {
-    className: "text-left font-semibold px-4 py-3"
+    className: "text-right font-semibold px-4 py-3"
   }, "Ações"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(l => {
     const st = stageOf(l.stage);
     return /*#__PURE__*/React.createElement("tr", {
       key: l.id,
       onClick: () => onOpen(l.id),
-      className: "border-t border-slate-100 hover:bg-slate-50 cursor-pointer"
+      className: "border-t border-[#f1f2f4] hover:bg-slate-50/70 cursor-pointer"
     }, /*#__PURE__*/React.createElement("td", {
       className: "px-4 py-3"
     }, /*#__PURE__*/React.createElement("p", {
       className: "font-semibold text-slate-800"
-    }, l.name), /*#__PURE__*/React.createElement("p", {
+    }, l.name), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-1.5 mt-0.5"
+    }, /*#__PURE__*/React.createElement("span", {
       className: "text-xs text-slate-400"
-    }, l.phone || l.contact || '—')), /*#__PURE__*/React.createElement("td", {
+    }, l.phone || l.contact || '—'), /*#__PURE__*/React.createElement("span", {
+      className: "sm:hidden"
+    }, /*#__PURE__*/React.createElement(DistanceBadge, {
+      lead: l
+    })))), /*#__PURE__*/React.createElement("td", {
       className: "px-4 py-3 hidden sm:table-cell"
+    }, /*#__PURE__*/React.createElement(DistanceBadge, {
+      lead: l,
+      showCity: true
+    })), /*#__PURE__*/React.createElement("td", {
+      className: "px-4 py-3 hidden md:table-cell"
     }, /*#__PURE__*/React.createElement(Badge, {
       color: st.color,
       subtle: true
     }, st.label)), /*#__PURE__*/React.createElement("td", {
-      className: "px-4 py-3 hidden md:table-cell"
+      className: "px-4 py-3 hidden lg:table-cell"
     }, /*#__PURE__*/React.createElement(SourceBadge, {
       source: l.source
     })), /*#__PURE__*/React.createElement("td", {
-      className: "px-4 py-3 text-right hidden lg:table-cell font-semibold text-slate-700"
-    }, l.value ? fmtBRL(l.value) : '—'), /*#__PURE__*/React.createElement("td", {
-      className: "px-4 py-3 hidden md:table-cell"
+      className: "px-4 py-3 hidden lg:table-cell"
     }, l.owner ? /*#__PURE__*/React.createElement("div", {
       className: "flex items-center gap-1.5"
     }, /*#__PURE__*/React.createElement(Avatar, {
@@ -1240,7 +1524,7 @@ function Contatos(props) {
       className: "px-4 py-3",
       onClick: e => e.stopPropagation()
     }, /*#__PURE__*/React.createElement("div", {
-      className: "flex gap-1"
+      className: "flex gap-1 justify-end"
     }, l.phone && /*#__PURE__*/React.createElement("a", {
       href: waLink(l.phone),
       target: "_blank",
@@ -1250,13 +1534,20 @@ function Contatos(props) {
       href: 'tel:' + digits(l.phone),
       title: "Ligar",
       className: "w-8 h-8 flex items-center justify-center rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600"
-    }, "📞"))));
+    }, "📞"), /*#__PURE__*/React.createElement("a", {
+      href: routeLink(l),
+      target: "_blank",
+      title: "Rota no Maps",
+      className: "w-8 h-8 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600"
+    }, "🗺️"))));
   }), !rows.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
     colSpan: "6",
     className: "text-center text-slate-400 py-10"
   }, "Nenhum lead encontrado.")))))), /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-slate-400 mt-2"
-  }, rows.length, " lead(s)"));
+  }, rows.length, " lead(s) · ", /*#__PURE__*/React.createElement("span", {
+    className: "text-slate-300"
+  }, "📍 * = distância aproximada pelo DDD")));
 }
 
 /* ============================= Atividades ============================= */
@@ -1596,6 +1887,7 @@ function AddLeadModal({
     contact: '',
     phone: '',
     email: '',
+    address: '',
     source: 'manual',
     value: '',
     owner: '',
@@ -1666,6 +1958,18 @@ function AddLeadModal({
       email: e.target.value
     }),
     className: inp
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "text-xs font-semibold text-slate-500"
+  }, "Endereço ", /*#__PURE__*/React.createElement("span", {
+    className: "text-slate-300 font-normal"
+  }, "(pra calcular a distância)")), /*#__PURE__*/React.createElement("input", {
+    value: f.address,
+    onChange: e => setF({
+      ...f,
+      address: e.target.value
+    }),
+    className: inp,
+    placeholder: "Rua, nº, bairro, cidade"
   })), /*#__PURE__*/React.createElement("div", {
     className: "grid grid-cols-2 gap-3"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
@@ -1741,7 +2045,8 @@ function LeadDrawer({
   onAddTask,
   onToggleTask,
   onMarkLost,
-  onDelete
+  onDelete,
+  onGeocode
 }) {
   const [tab, setTab] = useState('timeline');
   const [note, setNote] = useState('');
@@ -1780,16 +2085,24 @@ function LeadDrawer({
     return ev.sort((a, b) => b.ts - a.ts);
   }, [lead]);
   const saveEdit = () => {
-    onWrite(lead.id, {
+    const addrChanged = (ef.address || '') !== (lead.address || '');
+    const patch = {
       name: ef.name,
       contact: ef.contact,
       phone: ef.phone,
       email: ef.email,
+      address: ef.address || '',
       value: Number(ef.value) || 0,
       owner: ef.owner,
       priority: ef.priority
-    });
+    };
+    if (addrChanged) {
+      patch.lat = null;
+      patch.lng = null;
+    } // recalcula pelo novo endereço
+    onWrite(lead.id, patch);
     setEdit(false);
+    if (addrChanged && ef.address && onGeocode) onGeocode(lead.id, ef.address, ef.phone);
   };
   const submitNote = e => {
     e.preventDefault();
@@ -1831,6 +2144,9 @@ function LeadDrawer({
     className: "flex items-center gap-2 mt-1.5 flex-wrap"
   }, /*#__PURE__*/React.createElement(SourceBadge, {
     source: lead.source
+  }), /*#__PURE__*/React.createElement(DistanceBadge, {
+    lead: lead,
+    showCity: true
   }), /*#__PURE__*/React.createElement("span", {
     className: "text-xs font-semibold",
     style: {
@@ -1848,10 +2164,11 @@ function LeadDrawer({
   }, "💬 WhatsApp"), lead.phone && /*#__PURE__*/React.createElement("a", {
     href: 'tel:' + digits(lead.phone),
     className: "flex-1 flex items-center justify-center gap-1 bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold py-2 rounded-lg"
-  }, "📞 Ligar"), lead.email && /*#__PURE__*/React.createElement("a", {
-    href: 'mailto:' + lead.email,
-    className: "flex-1 flex items-center justify-center gap-1 bg-slate-600 hover:bg-slate-700 text-white text-xs font-semibold py-2 rounded-lg"
-  }, "✉️ E-mail"))), /*#__PURE__*/React.createElement("div", {
+  }, "📞 Ligar"), /*#__PURE__*/React.createElement("a", {
+    href: routeLink(lead),
+    target: "_blank",
+    className: "flex-1 flex items-center justify-center gap-1 bg-slate-700 hover:bg-slate-800 text-white text-xs font-semibold py-2 rounded-lg"
+  }, "🗺️ Rota"))), /*#__PURE__*/React.createElement("div", {
     className: "p-4"
   }, /*#__PURE__*/React.createElement("label", {
     className: "text-xs font-semibold text-slate-500 uppercase"
@@ -1914,6 +2231,14 @@ function LeadDrawer({
     }),
     className: inp,
     placeholder: "E-mail"
+  }), /*#__PURE__*/React.createElement("input", {
+    value: ef.address || '',
+    onChange: e => setEf({
+      ...ef,
+      address: e.target.value
+    }),
+    className: inp,
+    placeholder: "Endereço (rua, bairro, cidade)"
   }), /*#__PURE__*/React.createElement("div", {
     className: "grid grid-cols-2 gap-2"
   }, /*#__PURE__*/React.createElement("input", {
@@ -1959,6 +2284,20 @@ function LeadDrawer({
     label: "E-mail",
     value: lead.email || '—'
   }), /*#__PURE__*/React.createElement(Row, {
+    label: "Endereço",
+    value: lead.address || '—'
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "flex justify-between gap-3 items-center"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-slate-400"
+  }, "Distância"), /*#__PURE__*/React.createElement("span", {
+    className: "flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement(DistanceBadge, {
+    lead: lead,
+    showCity: true
+  }), !lead.address && /*#__PURE__*/React.createElement("span", {
+    className: "text-[11px] text-slate-300"
+  }, "cadastre o endereço p/ precisão"))), /*#__PURE__*/React.createElement(Row, {
     label: "Valor",
     value: lead.value ? fmtBRL(lead.value) : '—',
     bold: true

@@ -98,6 +98,25 @@
     const USERS = ["Fernanda", "Elizimario"];
     const PRIORITIES = { alta:{label:'Alta', color:'#EF4444'}, media:{label:'Média', color:'#EAB308'}, baixa:{label:'Baixa', color:'#94A3B8'} };
 
+    /* Base da empresa (K2 LOC) — trocar pelo endereco/coords exatos da sede */
+    const BASE = { label:'K2 LOC — Fortaleza/CE', lat:-3.7319, lng:-38.5267 };
+    /* Distancias de referencia a partir da base (km): perto / medio / longe */
+    const DIST_NEAR = 70, DIST_MID = 350;
+    /* Cidade aproximada por DDD (pra estimar distancia sem endereco) */
+    const DDD_CITY = {
+        '85':{c:'Fortaleza',uf:'CE',lat:-3.7319,lng:-38.5267}, '88':{c:'Interior',uf:'CE',lat:-3.6880,lng:-40.3497},
+        '86':{c:'Teresina',uf:'PI',lat:-5.0892,lng:-42.8016},  '89':{c:'Interior',uf:'PI',lat:-7.0764,lng:-41.4675},
+        '84':{c:'Natal',uf:'RN',lat:-5.7945,lng:-35.2110},     '83':{c:'João Pessoa',uf:'PB',lat:-7.1195,lng:-34.8450},
+        '81':{c:'Recife',uf:'PE',lat:-8.0476,lng:-34.8770},    '87':{c:'Interior',uf:'PE',lat:-8.2833,lng:-38.2500},
+        '82':{c:'Maceió',uf:'AL',lat:-9.6498,lng:-35.7089},    '79':{c:'Aracaju',uf:'SE',lat:-10.9472,lng:-37.0731},
+        '71':{c:'Salvador',uf:'BA',lat:-12.9714,lng:-38.5014}, '73':{c:'Itabuna',uf:'BA',lat:-14.7935,lng:-39.2800},
+        '98':{c:'São Luís',uf:'MA',lat:-2.5307,lng:-44.3068},  '99':{c:'Imperatriz',uf:'MA',lat:-5.5264,lng:-47.4917},
+        '31':{c:'Belo Horizonte',uf:'MG',lat:-19.9167,lng:-43.9345}, '11':{c:'São Paulo',uf:'SP',lat:-23.5505,lng:-46.6333},
+        '21':{c:'Rio de Janeiro',uf:'RJ',lat:-22.9068,lng:-43.1729}, '27':{c:'Vitória',uf:'ES',lat:-20.3155,lng:-40.3128},
+        '61':{c:'Brasília',uf:'DF',lat:-15.7939,lng:-47.8828}, '62':{c:'Goiânia',uf:'GO',lat:-16.6869,lng:-49.2648},
+        '41':{c:'Curitiba',uf:'PR',lat:-25.4284,lng:-49.2733}, '51':{c:'Porto Alegre',uf:'RS',lat:-30.0346,lng:-51.2177},
+    };
+
     /* ============================= Helpers ============================= */
     const genId = () => 'x' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
     const now = () => Date.now();
@@ -117,6 +136,42 @@
         if (s < 604800) return Math.floor(s/86400)+' d';
         return fmtDate(ts);
     };
+
+    /* ================ Distância ================ */
+    const haversine = (a, b) => {
+        const R = 6371, toR = x => x*Math.PI/180;
+        const dLat = toR(b.lat-a.lat), dLng = toR(b.lng-a.lng);
+        const h = Math.sin(dLat/2)**2 + Math.cos(toR(a.lat))*Math.cos(toR(b.lat))*Math.sin(dLng/2)**2;
+        return Math.round(2*R*Math.asin(Math.min(1, Math.sqrt(h))));
+    };
+    const dddOf = phone => digits(phone).slice(0,2);
+    // Coordenada do lead: precisa (endereço geolocalizado) ou aproximada (DDD)
+    const leadGeo = lead => {
+        if (lead.lat && lead.lng) return { lat:lead.lat, lng:lead.lng, approx:false };
+        const c = DDD_CITY[dddOf(lead.phone)];
+        if (c) return { lat:c.lat, lng:c.lng, approx:true, city:c.c+'/'+c.uf };
+        return null;
+    };
+    // Distância em km da base; null se não dá pra estimar
+    const leadDist = lead => {
+        const g = leadGeo(lead); if (!g) return null;
+        return { km: haversine(BASE, g), approx:g.approx, city:g.city };
+    };
+    const distColor = km => km <= DIST_NEAR ? '#22C55E' : km <= DIST_MID ? '#EAB308' : '#EF4444';
+    const routeLink = lead => {
+        const dest = (lead.lat && lead.lng) ? (lead.lat+','+lead.lng)
+                   : encodeURIComponent((lead.address || lead.name) + ', ' + (DDD_CITY[dddOf(lead.phone)] ? DDD_CITY[dddOf(lead.phone)].c : '') + ', Brasil');
+        return 'https://www.google.com/maps/dir/?api=1&origin=' + BASE.lat + ',' + BASE.lng + '&destination=' + dest;
+    };
+    // Geocodifica um endereço (OpenStreetMap Nominatim) — melhor esforço, roda no navegador
+    async function geocode(address, hint) {
+        if (typeof fetch !== 'function' || !address) return null;
+        const q = encodeURIComponent(address + (hint ? ', ' + hint : '') + ', Brasil');
+        const res = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + q, { headers:{ 'Accept':'application/json' } });
+        const data = await res.json();
+        if (data && data[0]) return { lat:parseFloat(data[0].lat), lng:parseFloat(data[0].lon) };
+        return null;
+    }
 
     /* ================ Dados iniciais (42 prospects K2LOC) ================ */
     const PROSPECTS_DATA = [
@@ -186,6 +241,9 @@
                 contact: v.contact || '',
                 phone: v.phone || '',
                 email: v.email || '',
+                address: v.address || '',
+                lat: (v.lat != null && !isNaN(v.lat)) ? Number(v.lat) : null,
+                lng: (v.lng != null && !isNaN(v.lng)) ? Number(v.lng) : null,
                 source: SOURCES[v.source] ? v.source : 'site',
                 stage: ALL_STAGES.some(s=>s.key===v.stage) ? v.stage : 'novo',
                 value: Number(v.value) || 0,
@@ -231,6 +289,19 @@
     function SourceBadge({ source }) {
         const s = srcOf(source);
         return <Badge color={s.color} subtle>{s.icon} {s.label}</Badge>;
+    }
+    function DistanceBadge({ lead, showCity }) {
+        const d = leadDist(lead);
+        if (!d) return null;
+        const label = d.km <= 1 ? 'Local' : '~' + d.km + ' km';
+        const city = showCity && d.city ? ' · ' + d.city : '';
+        return (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold"
+                  style={{ background: distColor(d.km)+'1a', color: distColor(d.km) }}
+                  title={d.approx ? 'Distância aproximada pelo DDD — cadastre o endereço para precisão' : 'Distância pelo endereço cadastrado'}>
+                📍 {label}{city}{d.approx ? '*' : ''}
+            </span>
+        );
     }
     function Avatar({ name, size=28 }) {
         const initials = name ? name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase() : '—';
@@ -300,21 +371,33 @@
                 });
             }
         };
+        const geocodeLead = async (id, address, phone) => {
+            if (!address) return;
+            try {
+                const c = DDD_CITY[dddOf(phone)];
+                const g = await geocode(address, c ? c.c + ', ' + c.uf : '');
+                if (g) writeLead(id, { lat:g.lat, lng:g.lng });
+            } catch (e) { console.warn('Geocode falhou:', e); }
+        };
         const createLead = async (data) => {
             const base = {
                 name: data.name?.trim() || 'Sem nome', contact: data.contact?.trim() || '',
                 phone: data.phone?.trim() || '', email: data.email?.trim() || '',
+                address: data.address?.trim() || '', lat: data.lat || null, lng: data.lng || null,
                 source: data.source || 'manual', stage: 'novo', value: Number(data.value) || 0,
                 owner: data.owner || '', priority: data.priority || 'media',
                 notes: [], tasks: [], history: [{ ts:now(), user, type:'created' }],
                 createdAt: now(), updatedAt: now()
             };
-            if (db) { const r = db.ref('/leads').push(); await r.update({ ...base, id:r.key }); }
+            let id;
+            if (db) { const r = db.ref('/leads').push(); id = r.key; await r.update({ ...base, id }); }
             else {
-                const id = genId();
+                id = genId();
                 setLeads(prev => { const u = { ...prev, [id]: { ...base, id } }; localStorage.setItem('k2loc-leads', JSON.stringify(u)); return u; });
             }
             notify('✅ Lead adicionado ao funil');
+            if (base.address && !base.lat) geocodeLead(id, base.address, base.phone);
+            return id;
         };
         const importLeads = async (list) => {
             for (const d of list) { await createLead(d); }
@@ -406,7 +489,7 @@
 
                 {selected && <LeadDrawer lead={selected} user={user} onClose={()=>setSelId(null)}
                     onWrite={writeLead} onMove={moveStage} onAddNote={addNote} onAddTask={addTask}
-                    onToggleTask={toggleTask} onMarkLost={markLost} onDelete={deleteLead} />}
+                    onToggleTask={toggleTask} onMarkLost={markLost} onDelete={deleteLead} onGeocode={geocodeLead} />}
                 {showAdd && <AddLeadModal onClose={()=>setShowAdd(false)} onCreate={createLead} />}
                 {toast && <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] toast-in">
                     <div className="bg-slate-900 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-xl">{toast}</div>
@@ -596,9 +679,10 @@
                         {lead.value > 0 && <p className="text-sm font-bold text-[#0A1F4B] shrink-0 whitespace-nowrap">{fmtBRL(lead.value)}</p>}
                     </div>
                     {wide && lead.phone && <p className="text-xs text-slate-400 mt-0.5">{lead.phone}</p>}
-                    <div className="flex items-center justify-between mt-2.5">
+                    <div className="flex items-center gap-1.5 flex-wrap mt-2.5">
                         <SourceBadge source={lead.source} />
-                        <div className="flex items-center gap-2">
+                        <DistanceBadge lead={lead} showCity={wide} />
+                        <div className="flex items-center gap-2 ml-auto">
                             {pend.length > 0 && (
                                 <span className={"inline-flex items-center gap-1 text-[11px] font-bold " + (overdue?'text-red-500':'text-slate-400')}>
                                     <Icon name="atividades" size={13} />{pend.length}
@@ -615,38 +699,65 @@
     /* ============================= Contatos (tabela) ============================= */
     function Contatos(props) {
         const { leads, onOpen } = props;
-        const rows = [...leads].sort((a,b)=>b.updatedAt-a.updatedAt);
+        const [sort, setSort] = useState('recent');
+        const rows = useMemo(() => {
+            const arr2 = [...leads];
+            if (sort === 'dist') {
+                return arr2.sort((a,b) => {
+                    const da = leadDist(a), db2 = leadDist(b);
+                    return (da?da.km:9e9) - (db2?db2.km:9e9);
+                });
+            }
+            return arr2.sort((a,b)=>b.updatedAt-a.updatedAt);
+        }, [leads, sort]);
+        const SortBtn = ({ v, children }) => (
+            <button onClick={()=>setSort(v)}
+                className={"px-3 py-1.5 text-xs font-semibold rounded-lg transition " + (sort===v ? 'bg-white text-[#0A1F4B] soft-shadow' : 'text-slate-500')}>
+                {children}
+            </button>
+        );
         return (
             <div>
                 <FilterBar {...props} />
-                <div className="bg-white rounded-xl border border-[#ececef] overflow-hidden">
+                <div className="flex items-center gap-2 mb-3">
+                    <span className="text-xs font-semibold text-slate-400">Ordenar:</span>
+                    <div className="inline-flex bg-slate-100 rounded-lg p-0.5">
+                        <SortBtn v="recent">Recentes</SortBtn>
+                        <SortBtn v="dist">📍 Mais perto</SortBtn>
+                    </div>
+                </div>
+                <div className="card overflow-hidden">
                     <div className="overflow-x-auto no-scrollbar">
                         <table className="w-full text-sm">
-                            <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
+                            <thead className="bg-slate-50/70 text-slate-400 text-[11px] uppercase tracking-wide">
                                 <tr>
                                     <th className="text-left font-semibold px-4 py-3">Lead</th>
-                                    <th className="text-left font-semibold px-4 py-3 hidden sm:table-cell">Etapa</th>
-                                    <th className="text-left font-semibold px-4 py-3 hidden md:table-cell">Origem</th>
-                                    <th className="text-right font-semibold px-4 py-3 hidden lg:table-cell">Valor</th>
-                                    <th className="text-left font-semibold px-4 py-3 hidden md:table-cell">Dono</th>
-                                    <th className="text-left font-semibold px-4 py-3">Ações</th>
+                                    <th className="text-left font-semibold px-4 py-3 hidden sm:table-cell">Distância</th>
+                                    <th className="text-left font-semibold px-4 py-3 hidden md:table-cell">Etapa</th>
+                                    <th className="text-left font-semibold px-4 py-3 hidden lg:table-cell">Origem</th>
+                                    <th className="text-left font-semibold px-4 py-3 hidden lg:table-cell">Dono</th>
+                                    <th className="text-right font-semibold px-4 py-3">Ações</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {rows.map(l => { const st = stageOf(l.stage); return (
-                                    <tr key={l.id} onClick={()=>onOpen(l.id)} className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer">
+                                    <tr key={l.id} onClick={()=>onOpen(l.id)} className="border-t border-[#f1f2f4] hover:bg-slate-50/70 cursor-pointer">
                                         <td className="px-4 py-3">
                                             <p className="font-semibold text-slate-800">{l.name}</p>
-                                            <p className="text-xs text-slate-400">{l.phone || l.contact || '—'}</p>
+                                            <div className="flex items-center gap-1.5 mt-0.5">
+                                                <span className="text-xs text-slate-400">{l.phone || l.contact || '—'}</span>
+                                                <span className="sm:hidden"><DistanceBadge lead={l} /></span>
+                                            </div>
                                         </td>
-                                        <td className="px-4 py-3 hidden sm:table-cell"><Badge color={st.color} subtle>{st.label}</Badge></td>
-                                        <td className="px-4 py-3 hidden md:table-cell"><SourceBadge source={l.source} /></td>
-                                        <td className="px-4 py-3 text-right hidden lg:table-cell font-semibold text-slate-700">{l.value?fmtBRL(l.value):'—'}</td>
-                                        <td className="px-4 py-3 hidden md:table-cell">{l.owner ? <div className="flex items-center gap-1.5"><Avatar name={l.owner} size={22}/><span className="text-xs">{l.owner}</span></div> : <span className="text-xs text-slate-300">—</span>}</td>
+                                        <td className="px-4 py-3 hidden sm:table-cell"><DistanceBadge lead={l} showCity /></td>
+                                        <td className="px-4 py-3 hidden md:table-cell"><Badge color={st.color} subtle>{st.label}</Badge></td>
+                                        <td className="px-4 py-3 hidden lg:table-cell"><SourceBadge source={l.source} /></td>
+                                        <td className="px-4 py-3 hidden lg:table-cell">{l.owner ? <div className="flex items-center gap-1.5"><Avatar name={l.owner} size={22}/><span className="text-xs">{l.owner}</span></div> : <span className="text-xs text-slate-300">—</span>}</td>
                                         <td className="px-4 py-3" onClick={e=>e.stopPropagation()}>
-                                            <div className="flex gap-1">
+                                            <div className="flex gap-1 justify-end">
                                                 {l.phone && <a href={waLink(l.phone)} target="_blank" title="WhatsApp" className="w-8 h-8 flex items-center justify-center rounded-lg bg-green-50 hover:bg-green-100 text-green-600">💬</a>}
                                                 {l.phone && <a href={'tel:'+digits(l.phone)} title="Ligar" className="w-8 h-8 flex items-center justify-center rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600">📞</a>}
+                                                <a href={routeLink(l)} target="_blank" title="Rota no Maps" className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600">🗺️</a>
                                             </div>
                                         </td>
                                     </tr>
@@ -656,7 +767,7 @@
                         </table>
                     </div>
                 </div>
-                <p className="text-xs text-slate-400 mt-2">{rows.length} lead(s)</p>
+                <p className="text-xs text-slate-400 mt-2">{rows.length} lead(s) · <span className="text-slate-300">📍 * = distância aproximada pelo DDD</span></p>
             </div>
         );
     }
@@ -843,7 +954,7 @@
 
     /* ============================= Modal Novo Lead ============================= */
     function AddLeadModal({ onClose, onCreate }) {
-        const [f, setF] = useState({ name:'', contact:'', phone:'', email:'', source:'manual', value:'', owner:'', priority:'media' });
+        const [f, setF] = useState({ name:'', contact:'', phone:'', email:'', address:'', source:'manual', value:'', owner:'', priority:'media' });
         const submit = (e) => { e.preventDefault(); if(!f.name.trim()){ return; } onCreate(f); onClose(); };
         const inp = "border border-[#ececef] rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-[#E85D1A]/30";
         return (
@@ -864,6 +975,8 @@
                         </div>
                         <div><label className="text-xs font-semibold text-slate-500">E-mail</label>
                             <input value={f.email} onChange={e=>setF({...f,email:e.target.value})} className={inp} /></div>
+                        <div><label className="text-xs font-semibold text-slate-500">Endereço <span className="text-slate-300 font-normal">(pra calcular a distância)</span></label>
+                            <input value={f.address} onChange={e=>setF({...f,address:e.target.value})} className={inp} placeholder="Rua, nº, bairro, cidade" /></div>
                         <div className="grid grid-cols-2 gap-3">
                             <div><label className="text-xs font-semibold text-slate-500">Origem</label>
                                 <select value={f.source} onChange={e=>setF({...f,source:e.target.value})} className={inp+" bg-white"}>
@@ -894,7 +1007,7 @@
     }
 
     /* ============================= Drawer do Lead ============================= */
-    function LeadDrawer({ lead, user, onClose, onWrite, onMove, onAddNote, onAddTask, onToggleTask, onMarkLost, onDelete }) {
+    function LeadDrawer({ lead, user, onClose, onWrite, onMove, onAddNote, onAddTask, onToggleTask, onMarkLost, onDelete, onGeocode }) {
         const [tab, setTab] = useState('timeline');
         const [note, setNote] = useState('');
         const [taskTitle, setTaskTitle] = useState('');
@@ -914,8 +1027,12 @@
         }, [lead]);
 
         const saveEdit = () => {
-            onWrite(lead.id, { name:ef.name, contact:ef.contact, phone:ef.phone, email:ef.email, value:Number(ef.value)||0, owner:ef.owner, priority:ef.priority });
+            const addrChanged = (ef.address||'') !== (lead.address||'');
+            const patch = { name:ef.name, contact:ef.contact, phone:ef.phone, email:ef.email, address:ef.address||'', value:Number(ef.value)||0, owner:ef.owner, priority:ef.priority };
+            if (addrChanged) { patch.lat = null; patch.lng = null; } // recalcula pelo novo endereço
+            onWrite(lead.id, patch);
             setEdit(false);
+            if (addrChanged && ef.address && onGeocode) onGeocode(lead.id, ef.address, ef.phone);
         };
         const submitNote = (e) => { e.preventDefault(); if(!note.trim())return; onAddNote(lead.id, note); setNote(''); };
         const submitTask = (e) => { e.preventDefault(); if(!taskTitle.trim())return; onAddTask(lead.id, taskTitle, taskDue?new Date(taskDue+'T12:00').getTime():null); setTaskTitle(''); setTaskDue(''); };
@@ -934,6 +1051,7 @@
                                     : <h2 className="text-lg font-bold text-slate-800 leading-tight">{lead.name}</h2>}
                                 <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                                     <SourceBadge source={lead.source} />
+                                    <DistanceBadge lead={lead} showCity />
                                     <span className="text-xs font-semibold" style={{ color:pr.color }}>● {pr.label}</span>
                                 </div>
                             </div>
@@ -943,7 +1061,7 @@
                         <div className="flex gap-2">
                             {lead.phone && <a href={waLink(lead.phone)} target="_blank" className="flex-1 flex items-center justify-center gap-1 bg-green-500 hover:bg-green-600 text-white text-xs font-semibold py-2 rounded-lg">💬 WhatsApp</a>}
                             {lead.phone && <a href={'tel:'+digits(lead.phone)} className="flex-1 flex items-center justify-center gap-1 bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold py-2 rounded-lg">📞 Ligar</a>}
-                            {lead.email && <a href={'mailto:'+lead.email} className="flex-1 flex items-center justify-center gap-1 bg-slate-600 hover:bg-slate-700 text-white text-xs font-semibold py-2 rounded-lg">✉️ E-mail</a>}
+                            <a href={routeLink(lead)} target="_blank" className="flex-1 flex items-center justify-center gap-1 bg-slate-700 hover:bg-slate-800 text-white text-xs font-semibold py-2 rounded-lg">🗺️ Rota</a>
                         </div>
                     </div>
 
@@ -974,6 +1092,7 @@
                                     <input value={ef.contact} onChange={e=>setEf({...ef,contact:e.target.value})} className={inp} placeholder="Contato" />
                                     <input value={ef.phone} onChange={e=>setEf({...ef,phone:e.target.value})} className={inp} placeholder="Telefone" />
                                     <input value={ef.email} onChange={e=>setEf({...ef,email:e.target.value})} className={inp} placeholder="E-mail" />
+                                    <input value={ef.address||''} onChange={e=>setEf({...ef,address:e.target.value})} className={inp} placeholder="Endereço (rua, bairro, cidade)" />
                                     <div className="grid grid-cols-2 gap-2">
                                         <input type="number" value={ef.value} onChange={e=>setEf({...ef,value:e.target.value})} className={inp} placeholder="Valor R$" />
                                         <select value={ef.owner} onChange={e=>setEf({...ef,owner:e.target.value})} className={inp+" bg-white"}>
@@ -989,6 +1108,14 @@
                                     <Row label="Contato" value={lead.contact || '—'} />
                                     <Row label="Telefone" value={lead.phone || '—'} />
                                     <Row label="E-mail" value={lead.email || '—'} />
+                                    <Row label="Endereço" value={lead.address || '—'} />
+                                    <div className="flex justify-between gap-3 items-center">
+                                        <span className="text-slate-400">Distância</span>
+                                        <span className="flex items-center gap-2">
+                                            <DistanceBadge lead={lead} showCity />
+                                            {!lead.address && <span className="text-[11px] text-slate-300">cadastre o endereço p/ precisão</span>}
+                                        </span>
+                                    </div>
                                     <Row label="Valor" value={lead.value?fmtBRL(lead.value):'—'} bold />
                                     <Row label="Dono" value={lead.owner || 'Sem dono'} />
                                     <Row label="Criado" value={fmtDate(lead.createdAt)} />
